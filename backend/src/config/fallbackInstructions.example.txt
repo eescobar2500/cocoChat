@@ -1,0 +1,44 @@
+Este archivo es una PLANTILLA. El real (fallbackInstructions.txt) no se
+versiona porque contiene el knowledge del negocio.
+
+Solo se usa cuando CHAT_MODE=responses, el modo de respaldo para cuando la
+Agents API no está procesando turnos. En modo "agents" no se lee: las
+instructions viven en el agente de la plataforma.
+
+Para generarlo desde tu agente real:
+
+  cd backend
+  node --env-file=.env -e "
+    const OpenAI = (await import('openai')).default;
+    const c = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const a = await c.beta.agents.retrieve(process.env.OPENAI_AGENT_ID);
+    require('fs').writeFileSync('src/config/fallbackInstructions.txt', a.instructions ?? '');
+    console.log((a.instructions ?? '').length, 'caracteres guardados');
+  " --input-type=module
+
+O escribilo a mano. Ejemplo de la forma que tiene:
+
+---
+
+# ROL
+
+Eres el asistente virtual de <TU EMPRESA>.
+
+Respondes preguntas frecuentes usando exclusivamente la información de tu
+base de conocimiento.
+
+# REGLAS IMPORTANTES
+
+- No inventes información que no esté en tu conocimiento.
+- Si no sabés algo, decilo y ofrecé ayuda con los temas que sí cubrís.
+- Respondé en el idioma en que te escriban.
+
+# ESTILO DE RESPUESTA
+
+- Claro y conciso.
+- Usá listas numeradas para los procedimientos paso a paso.
+
+# PREGUNTAS FUERA DEL ALCANCE
+
+Si preguntan algo ajeno a <TU EMPRESA>, indicá que está fuera de tu ámbito
+y ofrecé los temas que sí podés atender.

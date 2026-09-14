@@ -1,0 +1,1230 @@
+/* ============================================================
+   YVR Assistant — sistema de diseño
+   Todos los valores viven acá como variables CSS: cambiar un
+   token acá se propaga a toda la interfaz.
+   ============================================================ */
+
+:root {
+  /* --- Color ---
+     Fondo verde-carbón (no negro puro: el negro absoluto cansa
+     la vista y aplasta las sombras). Cada capa sube un poco de
+     luminosidad para crear profundidad sin usar bordes. */
+  --bg-base: #070a09;
+  --bg-raised: #131614;
+  --bg-overlay: #191d1b;
+  --bg-input: #151917;
+
+  /* Acento jade: la identidad de YoVendoRecarga. Evitamos el azul
+     genérico de framework. */
+  --accent: #3ddc97;
+  --accent-strong: #2fc384;
+  --accent-dim: rgba(61, 220, 151, 0.12);
+  --accent-glow: rgba(61, 220, 151, 0.25);
+  --on-accent: #06251a;
+
+  --text: #e8ece9;
+  --text-soft: #a3ada7;
+  --text-faint: #6d7a74;
+
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+
+  --danger: #ff6b6b;
+  --danger-bg: rgba(255, 107, 107, 0.1);
+
+  /* --- Tipografía --- */
+  --font-display: "Bricolage Grotesque", Georgia, serif;
+  --font-body: "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* --- Forma y movimiento --- */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+
+  /* Curva con un punto de control >1: da una sensación elástica
+     al final del movimiento, más viva que un ease-out plano. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --shell-width: 52rem;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Accesibilidad: un foco visible y consistente en toda la app.
+   :focus-visible solo aparece con teclado, no al hacer clic. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ============================================================
+   Fondo ambiental (componente AIBackground)
+   Todo con CSS y SVG: sin imágenes, nítido a cualquier resolución.
+   ============================================================ */
+
+.ai-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Capa 1+2: mesh gradient. Tres halos verdes muy tenues sobre el fondo
+   casi negro: uno alto y central (detrás del avatar) y dos en esquinas
+   opuestas para dar profundidad sin parecer manchas. */
+.ai-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      44rem 30rem at 50% 26%,
+      rgba(61, 220, 151, 0.11),
+      transparent 68%
+    ),
+    radial-gradient(
+      52rem 34rem at 8% 4%,
+      rgba(61, 220, 151, 0.05),
+      transparent 62%
+    ),
+    radial-gradient(
+      48rem 32rem at 96% 98%,
+      rgba(47, 195, 132, 0.045),
+      transparent 62%
+    );
+}
+
+/* Viñeta: oscurece los bordes para que la atención caiga en el centro
+   y el mesh no llegue plano hasta las esquinas. */
+.ai-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse 90% 80% at 50% 45%,
+    transparent 40%,
+    rgba(4, 6, 5, 0.55) 100%
+  );
+}
+
+/* --- Capa 3: red neuronal --- */
+
+.ai-bg__net {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ai-bg__links line {
+  stroke: var(--accent);
+  stroke-width: 0.8;
+  /* Muy por debajo del umbral de lectura: se percibe como textura,
+     no como contenido. */
+  opacity: 0.1;
+}
+
+.ai-bg__nodes circle {
+  fill: var(--accent);
+  opacity: 0.14;
+  animation: node-pulse 7s var(--ease-soft) infinite;
+}
+
+@keyframes node-pulse {
+  0%,
+  100% {
+    opacity: 0.08;
+  }
+  50% {
+    opacity: 0.26;
+  }
+}
+
+/* --- Capa 4: partículas --- */
+
+.ai-bg__particles {
+  position: absolute;
+  inset: 0;
+}
+
+.ai-bg__particle {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  /* Solo animamos transform y opacity: no provocan reflow, así el
+     fondo no cuesta rendimiento. */
+  animation-name: drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 12px, 0);
+    opacity: 0;
+  }
+  15%,
+  70% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translate3d(6px, -70px, 0);
+    opacity: 0;
+  }
+}
+
+/* --- Glow detrás de la ilustración de bienvenida --- */
+
+.hero-glow {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: min(34rem, 92vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(61, 220, 151, 0.16),
+    rgba(61, 220, 151, 0.05) 42%,
+    transparent 68%
+  );
+  /* El blur elimina cualquier borde del degradado: parece luz, no una
+     figura. */
+  filter: blur(34px);
+}
+
+/* ============================================================
+   Layout
+   ============================================================ */
+
+/* 100dvh (dynamic viewport height) y no 100vh: en móvil la barra
+   del navegador se oculta al hacer scroll y con 100vh el input
+   quedaría tapado. */
+.app {
+  position: relative;
+  /* Por encima del fondo ambiental (z-index: 0). */
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: var(--shell-width);
+  margin-inline: auto;
+}
+
+/* ============================================================
+   Header
+   ============================================================ */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  /* El header flota sobre los mensajes al hacer scroll: el blur
+     los desenfoca por detrás en vez de taparlos con un bloque. */
+  backdrop-filter: blur(12px);
+  background: rgba(7, 10, 9, 0.72);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------
+   Avatar de YVR Assistant
+   Un solo componente con dos tamaños. La imagen ya viene cuadrada
+   y con el robot centrado (ver scripts/generate-avatar.mjs), así
+   que acá solo damos forma, borde y halo: no hace falta recortar
+   ni ampliar, y por eso no se pierde ninguna parte del personaje.
+   ------------------------------------------------------------ */
+
+.avatar {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  /* Fondo bajo la imagen: si tardara en cargar, el hueco tiene ya
+     la forma y el color correctos en vez de un rectángulo vacío. */
+  background: var(--bg-raised);
+}
+
+.avatar__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* La imagen es 1:1 igual que el contenedor: `cover` no recorta
+     nada, solo garantiza que llene el círculo sin deformarse. */
+  object-fit: cover;
+}
+
+/* ------------------------------------------------------------
+   Ilustración de bienvenida
+   Se usa boot.png ENTERO (1536x1024), sin recortes: se ve el robot
+   completo con su logo YVR, los bocadillos y las etiquetas de
+   servicios tal como fue diseñada.
+   ------------------------------------------------------------ */
+
+.hero-art {
+  position: relative;
+  /* Ancho generoso pero acotado: la ilustración es horizontal, así que
+     el límite lo marca el ancho disponible, no la altura. */
+  width: min(30rem, 100%);
+  margin-bottom: 1rem;
+  animation: avatar-in 0.6s var(--ease) both;
+}
+
+.hero-art__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* La ilustración trae fondo claro con bordes oscuros. En vez de
+     recortarla, desvanecemos los bordes con una máscara elíptica:
+     el centro (donde está el robot) queda intacto y los extremos se
+     funden con el fondo de la app. */
+  -webkit-mask-image: radial-gradient(
+    ellipse 68% 74% at 50% 48%,
+    #000 58%,
+    transparent 92%
+  );
+  mask-image: radial-gradient(
+    ellipse 68% 74% at 50% 48%,
+    #000 58%,
+    transparent 92%
+  );
+}
+
+/* --- Variante pequeña: header --- */
+.avatar--sm {
+  width: 2.5rem;
+  height: 2.5rem;
+  box-shadow:
+    0 0 0 1px rgba(61, 220, 151, 0.3),
+    0 3px 12px -4px var(--accent-glow);
+}
+
+@keyframes avatar-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.brand__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brand__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+/* El punto del estado tiene su propio color según el estado.
+   Un solo componente sirve para "listo", "pensando" y "error". */
+.brand__status {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  letter-spacing: 0.01em;
+}
+
+.brand__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.brand__status--idle {
+  color: var(--text-faint);
+}
+
+.brand__status--busy {
+  color: var(--accent);
+}
+
+.brand__status--busy .brand__dot {
+  animation: pulse 1.6s var(--ease-soft) infinite;
+}
+
+.brand__status--error {
+  color: var(--danger);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+/* ============================================================
+   Botones base
+   ============================================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-soft);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  transition:
+    color 0.18s var(--ease-soft),
+    background-color 0.18s var(--ease-soft),
+    border-color 0.18s var(--ease-soft),
+    transform 0.12s var(--ease-soft);
+}
+
+.btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-overlay);
+  border-color: var(--border-strong);
+}
+
+/* active: un desplazamiento mínimo hacia abajo da la sensación
+   física de "presionado". */
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn__icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   Zona de mensajes
+   ============================================================ */
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  /* scrollbar-gutter reserva el espacio de la barra siempre, así
+     el contenido no "salta" al aparecer el scroll. */
+  scrollbar-gutter: stable;
+}
+
+.main::-webkit-scrollbar {
+  width: 10px;
+}
+
+.main::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+  /* border transparente + background-clip = thumb más fino con
+     margen, sin necesitar otro elemento. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+.main::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: content-box;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.75rem 1.25rem 1rem;
+}
+
+/* ============================================================
+   Estado vacío
+   ============================================================ */
+
+.empty {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  /* Bloque compacto y centrado: el avatar manda, y el resto se
+     agrupa debajo sin quedar flotando en medio de la pantalla. */
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+  animation: fade-up 0.5s var(--ease) both;
+}
+
+/* Mascota de YoVendoRecarga.
+   La imagen trae fondo oscuro propio, así que la fundimos con el fondo de
+   la app: mask-image desvanece los bordes en un óvalo y el resultado se
+   integra sin recorte visible. */
+
+.empty__title {
+  margin: 0 0 0.45rem;
+  font-family: var(--font-display);
+  font-size: clamp(1.25rem, 1.05rem + 0.9vw, 1.6rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.empty__hint {
+  margin: 0 0 1.5rem;
+  max-width: 24rem;
+  font-size: 0.875rem;
+  color: var(--text-soft);
+}
+
+/* Sugerencias: dan al usuario un punto de partida en vez de
+   dejarlo frente a un campo en blanco. */
+.empty__prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  max-width: 30rem;
+}
+
+.prompt-chip {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  transition:
+    color 0.18s var(--ease-soft),
+    background-color 0.18s var(--ease-soft),
+    border-color 0.18s var(--ease-soft),
+    transform 0.18s var(--ease);
+}
+
+.prompt-chip:hover {
+  color: var(--text);
+  background: var(--bg-overlay);
+  border-color: rgba(61, 220, 151, 0.35);
+  transform: translateY(-2px);
+}
+
+.prompt-chip:active {
+  transform: translateY(0);
+}
+
+/* ============================================================
+   Mensajes
+   ============================================================ */
+
+.message {
+  display: flex;
+  gap: 0.75rem;
+  /* both: aplica el estado inicial antes de empezar, evitando
+     el parpadeo del primer frame. */
+  animation: fade-up 0.35s var(--ease) both;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* El mensaje del usuario se alinea a la derecha invirtiendo el
+   orden de los hijos: el avatar queda del lado exterior. */
+.message--user {
+  flex-direction: row-reverse;
+}
+
+.message__avatar {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius-sm);
+}
+
+.message--assistant .message__avatar {
+  color: var(--on-accent);
+  background: linear-gradient(145deg, var(--accent), var(--accent-strong));
+}
+
+.message--user .message__avatar {
+  color: var(--text-soft);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+}
+
+.message__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 85%;
+}
+
+.message--user .message__body {
+  align-items: flex-end;
+}
+
+.message__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-inline: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+.message__bubble {
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius-md);
+  /* pre-wrap conserva los saltos de línea del modelo;
+     break-word evita que una URL larga desborde. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.message--assistant .message__bubble {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-top-left-radius: var(--radius-sm);
+}
+
+.message--user .message__bubble {
+  color: var(--on-accent);
+  background: linear-gradient(145deg, var(--accent), var(--accent-strong));
+  border-top-right-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------
+   Contenido Markdown dentro de la burbuja del asistente.
+   El agente responde con negritas, listas, enlaces y código;
+   sin estos estilos se vería como un bloque de texto plano.
+   ------------------------------------------------------------ */
+
+/* El primer y último elemento no llevan margen: si no, la burbuja
+   tendría un hueco extra arriba y abajo. */
+.message__bubble > :first-child {
+  margin-top: 0;
+}
+
+.message__bubble > :last-child {
+  margin-bottom: 0;
+}
+
+.message__bubble p {
+  margin: 0 0 0.7rem;
+}
+
+.message__bubble strong {
+  font-weight: 650;
+  color: var(--text);
+}
+
+.message__bubble em {
+  font-style: italic;
+}
+
+/* Listas: sangría contenida para que no se despeguen del texto. */
+.message__bubble ul,
+.message__bubble ol {
+  margin: 0 0 0.7rem;
+  padding-left: 1.25rem;
+}
+
+.message__bubble li {
+  margin-bottom: 0.3rem;
+}
+
+.message__bubble li::marker {
+  color: var(--accent);
+}
+
+/* Anidadas: menos separación, si no se acumula demasiado espacio. */
+.message__bubble li > ul,
+.message__bubble li > ol {
+  margin-top: 0.3rem;
+  margin-bottom: 0;
+}
+
+.message__bubble h1,
+.message__bubble h2,
+.message__bubble h3,
+.message__bubble h4 {
+  margin: 1rem 0 0.5rem;
+  font-family: var(--font-display);
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.message__bubble h1 {
+  font-size: 1.15rem;
+}
+
+.message__bubble h2 {
+  font-size: 1.05rem;
+}
+
+.message__bubble h3,
+.message__bubble h4 {
+  font-size: 0.975rem;
+}
+
+.message__bubble a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  transition: opacity 0.15s var(--ease-soft);
+}
+
+.message__bubble a:hover {
+  opacity: 0.75;
+}
+
+/* Código inline: fondo tenue para distinguirlo de la prosa. */
+.message__bubble code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.12em 0.36em;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 5px;
+}
+
+/* Bloques de código: scroll horizontal propio para que una línea
+   larga no ensanche la burbuja entera. */
+.message__bubble pre {
+  margin: 0 0 0.7rem;
+  padding: 0.75rem 0.9rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.message__bubble pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.82em;
+  line-height: 1.55;
+}
+
+/* Cita: barra de acento a la izquierda. */
+.message__bubble blockquote {
+  margin: 0 0 0.7rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid var(--accent);
+  color: var(--text-soft);
+}
+
+/* Tablas (remark-gfm): contenedor con scroll si no caben. */
+.message__bubble table {
+  width: 100%;
+  margin: 0 0 0.7rem;
+  border-collapse: collapse;
+  font-size: 0.875em;
+  display: block;
+  overflow-x: auto;
+}
+
+.message__bubble th,
+.message__bubble td {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.message__bubble th {
+  background: rgba(255, 255, 255, 0.04);
+  font-weight: 600;
+}
+
+.message__bubble hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* En la burbuja del usuario (fondo jade) el código necesita otro
+   contraste: sobre verde, un fondo claro translúcido se lee mejor. */
+.message--user .message__bubble code {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* Acciones que aparecen al pasar el ratón sobre el mensaje.
+   Ocultarlas por defecto mantiene la conversación limpia. */
+.message__actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.18s var(--ease-soft);
+}
+
+.message:hover .message__actions,
+.message__actions:focus-within {
+  opacity: 1;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  color: var(--text-faint);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color 0.18s var(--ease-soft),
+    background-color 0.18s var(--ease-soft);
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--bg-overlay);
+}
+
+.icon-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.icon-btn--done {
+  color: var(--accent);
+}
+
+/* ============================================================
+   Indicador de escritura
+   ============================================================ */
+
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 1.4rem;
+}
+
+.typing__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: bounce 1.3s var(--ease-soft) infinite;
+}
+
+.typing__dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.typing__dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes bounce {
+  0%,
+  70%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  35% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+/* ============================================================
+   Pie: error, uso e input
+   ============================================================ */
+
+.footer {
+  padding: 0.75rem 1.25rem 1.1rem;
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  background: rgba(7, 10, 9, 0.72);
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0 0 0.7rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.82rem;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-radius: var(--radius-md);
+  animation: fade-up 0.3s var(--ease) both;
+}
+
+.error__icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.error__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.error__retry {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--danger);
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --- Composer --- */
+
+/* El borde vive en el contenedor, no en el textarea: así el
+   foco ilumina toda la caja, botón incluido. */
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  padding: 0.4rem 0.4rem 0.4rem 0.9rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition:
+    border-color 0.2s var(--ease-soft),
+    box-shadow 0.2s var(--ease-soft);
+}
+
+.composer--focused {
+  border-color: rgba(61, 220, 151, 0.4);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0 0.55rem;
+  font: inherit;
+  font-size: 0.925rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  resize: none;
+  max-height: 11rem;
+  /* El foco se muestra en el contenedor (.composer--focused),
+     no acá: si no, habría dos anillos superpuestos. */
+  outline: none;
+}
+
+.composer__input::placeholder {
+  color: var(--text-faint);
+}
+
+.composer__input:disabled {
+  opacity: 0.5;
+}
+
+/* Botón de envío circular. El gradiente y el glow lo destacan
+   como la acción principal de la pantalla. */
+.send-btn {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  padding: 0;
+  color: var(--on-accent);
+  background: linear-gradient(145deg, var(--accent), var(--accent-strong));
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    transform 0.16s var(--ease),
+    box-shadow 0.2s var(--ease-soft),
+    opacity 0.2s var(--ease-soft);
+}
+
+.send-btn:hover:not(:disabled) {
+  transform: scale(1.07);
+  box-shadow:
+    0 0 0 4px var(--accent-dim),
+    0 6px 18px -6px var(--accent-glow);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.send-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  background: var(--bg-overlay);
+  color: var(--text-faint);
+}
+
+.send-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Estado cancelar: cambia de color y de forma para que no se
+   confunda con el de enviar. */
+.send-btn--cancel {
+  color: var(--danger);
+  background: var(--danger-bg);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.3);
+}
+
+.send-btn--cancel:hover:not(:disabled) {
+  transform: scale(1.07);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 107, 107, 0.5),
+    0 0 0 4px rgba(255, 107, 107, 0.1);
+}
+
+/* --- Barra inferior: pista de teclado + uso de tokens --- */
+
+.composer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.55rem;
+  padding-inline: 0.3rem;
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  min-height: 1rem;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  color: var(--text-soft);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.1rem 0.3rem;
+  line-height: 1.4;
+}
+
+.usage {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
+.usage__item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.usage__value {
+  color: var(--text-soft);
+}
+
+/* Destella cuando el número cambia: hace notar que los tokens
+   de entrada suben turno a turno (el historial reenviándose). */
+.usage__value--flash {
+  animation: flash 0.7s var(--ease-soft);
+}
+
+@keyframes flash {
+  0% {
+    color: var(--accent);
+  }
+  100% {
+    color: var(--text-soft);
+  }
+}
+
+.usage__sep {
+  width: 1px;
+  height: 0.7rem;
+  background: var(--border);
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+
+@media (max-width: 640px) {
+  /* En móvil aligeramos el fondo: menos nodos visibles y glow más
+     contenido, para no competir con el contenido en poco espacio. */
+  .ai-bg__net {
+    opacity: 0.6;
+  }
+
+  .ai-bg__particle:nth-child(n + 5) {
+    display: none;
+  }
+
+  .hero-glow {
+    width: min(20rem, 88vw);
+    filter: blur(26px);
+  }
+
+  .header {
+    padding: 0.8rem 1rem;
+  }
+
+  .messages {
+    padding: 1.25rem 1rem 0.75rem;
+    gap: 1.25rem;
+  }
+
+  .message__body {
+    max-width: 88%;
+  }
+
+  .footer {
+    padding: 0.7rem 1rem 0.9rem;
+  }
+
+  /* La ilustración se encoge para que el título y las sugerencias
+     sigan visibles sin hacer scroll. */
+  .hero-art {
+    width: min(20rem, 100%);
+    margin-bottom: 0.5rem;
+  }
+
+  /* En móvil no hay hover: las acciones del mensaje se muestran
+     siempre, si no serían inalcanzables. */
+  .message__actions {
+    opacity: 1;
+  }
+
+  /* La pista de teclado no aplica en móvil (no hay Shift+Enter). */
+  .hint {
+    display: none;
+  }
+
+  .composer-meta {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 400px) {
+  .brand__status {
+    display: none;
+  }
+
+  .empty__prompts {
+    flex-direction: column;
+  }
+}
+
+/* Respetamos a quien pidió menos movimiento en su sistema.
+   Las animaciones se desactivan, la interfaz sigue funcionando. */
+@media (prefers-reduced-motion: reduce) {
+  /* Sin movimiento: las partículas desaparecen y los nodos se quedan
+     fijos. El fondo sigue existiendo, pero quieto. */
+  .ai-bg__particle {
+    display: none;
+  }
+
+  .ai-bg__nodes circle {
+    animation: none;
+    opacity: 0.12;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

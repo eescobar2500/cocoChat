@@ -1,0 +1,1224 @@
+{
+  "info": {
+    "name": "YVR Assistant API",
+    "description": "Backend Express integrado con un agente de OpenAI vía Agents API.\n\n## Contrato del chat\n\n```\nPOST /api/chat  { message, sessionId? }  →  { reply, sessionId, usage }\n```\n\nEl backend NO guarda la conversación ni reenvía el historial: OpenAI mantiene el estado en una **sesión**. El cliente guarda el `sessionId` de la primera respuesta y lo reenvía en los mensajes siguientes.\n\n## Modos del chat\n\nEl backend puede hablar con dos APIs, según `CHAT_MODE` en el `.env`:\n\n| Modo | API | Memoria | Knowledge |\n|---|---|---|---|\n| `agents` | Agents API | Sesión en OpenAI (`sessionId`) | Sí |\n| `responses` | Responses API | El cliente reenvía `history` | No, solo instructions |\n\nLa respuesta incluye `mode` para saber cuál se usó. El modo `responses` es un respaldo para cuando la Agents API deja de procesar turnos.\n\n## Rutas de mantenimiento\n\nTodas exigen la cabecera `x-admin-token` (valor de `ADMIN_TOKEN` en el `.env` del backend). Sin esa variable definida, las rutas quedan deshabilitadas.\n\nHay **tres recursos distintos** y conviene no confundirlos:\n\n| Recurso | Prefijo | Qué es | Se puede listar |\n|---|---|---|---|\n| Agente | `agent_` | Instructions, knowledge y tools. Borrarlo es irreversible | Sí |\n| Sesión | `sess_` | Conversación viva ejecutando un agente. Puede atascarse | Sí |\n| Conversación | `conv_` | Contenedor de mensajes, no ejecuta nada | **No** (la API no lo permite) |\n\n## Variables\n\n- `{{baseUrl}}` — http://localhost:3001\n- `{{adminToken}}` — pegá acá el ADMIN_TOKEN del .env\n- `{{sessionId}}`, `{{conversationId}}` — se rellenan solas al ejecutar",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "conversationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agentId",
+      "value": "agent_placeholder000000000000000000000000000000000000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /api/health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": "Comprueba que el servidor está vivo sin gastar una llamada al agente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('responde ok', () => {",
+                  "  pm.expect(pm.response.json().status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Chat (ejecutar en orden)",
+      "description": "La petición 1 crea la sesión y guarda {{sessionId}}; las siguientes la reutilizan.\n\nOJO: el agente tarda 15-40s por turno. Si Postman corta, subí el timeout en Settings → Request timeout.",
+      "item": [
+        {
+          "name": "1 — Pregunta del knowledge (crea sesión)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Cómo me registro en YoVendoRecarga?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            },
+            "description": "Sin sessionId → el backend crea una sesión nueva.\n\nLa respuesta sale del knowledge del agente, no de código en el backend."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "",
+                  "  pm.test('trae reply', () => {",
+                  "    pm.expect(body.reply).to.be.a('string').and.not.empty;",
+                  "  });",
+                  "",
+                  "  pm.test('trae sessionId', () => {",
+                  "    pm.expect(body.sessionId).to.be.a('string').and.not.empty;",
+                  "  });",
+                  "",
+                  "  pm.collectionVariables.set('sessionId', body.sessionId);",
+                  "  console.log('sessionId:', body.sessionId);",
+                  "  console.log('respuesta:', body.reply);",
+                  "} else {",
+                  "  console.log('Falló:', pm.response.code, pm.response.text());",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2 — Otra pregunta (misma sesión)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿En qué bancos puedo hacer un depósito?\",\n  \"sessionId\": \"{{sessionId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            },
+            "description": "Con sessionId → continúa la conversación.\n\nFijate que NO mandamos el historial: solo el mensaje nuevo y el id. OpenAI ya tiene el contexto."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('la sesión es la misma', () => {",
+                  "    pm.expect(body.sessionId).to.eql(pm.collectionVariables.get('sessionId'));",
+                  "  });",
+                  "  console.log('respuesta:', body.reply);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3 — Memoria de la sesión",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Cuál fue mi primera pregunta en esta conversación?\",\n  \"sessionId\": \"{{sessionId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            },
+            "description": "La sesión conserva el contexto: debería recordar la pregunta del paso 1 sin que nosotros reenviemos nada."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const reply = pm.response.json().reply.toLowerCase();",
+                  "  pm.test('recuerda la primera pregunta', () => {",
+                  "    pm.expect(reply).to.include('registr');",
+                  "  });",
+                  "  console.log('respuesta:', pm.response.json().reply);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Chat en modo respaldo (CHAT_MODE=responses)",
+      "description": "Estas peticiones asumen `CHAT_MODE=responses` en el `.env` del backend.\n\nEn ese modo no hay sesiones: `sessionId` vuelve `null` y la memoria la lleva el cliente enviando `history`.",
+      "item": [
+        {
+          "name": "1 — Pregunta sin historial",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Cómo me registro en YoVendoRecarga?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            },
+            "description": "Sin sesión ni historial: cada mensaje es independiente.\n\nLa respuesta usa las instructions guardadas en el backend (src/config/fallbackInstructions.txt), extraídas del agente real."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.test('trae reply', () => pm.expect(b.reply).to.be.a('string').and.not.empty);",
+                  "  pm.test('indica el modo', () => pm.expect(b.mode).to.be.oneOf(['agents','responses']));",
+                  "  console.log('modo:', b.mode);",
+                  "  console.log('respuesta:', b.reply);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2 — Con historial (memoria del cliente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"¿Cuál fue mi pregunta anterior?\",\n  \"history\": [\n    { \"role\": \"user\", \"content\": \"¿Cómo me registro?\" },\n    { \"role\": \"assistant\", \"content\": \"Ingresá a la web y tocá Regístrate.\" }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            },
+            "description": "En modo respaldo el contexto viaja en `history`. En modo agentes este campo se ignora, porque OpenAI ya tiene la conversación."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  if (b.mode === 'responses') {",
+                  "    pm.test('usó el historial', () => {",
+                  "      pm.expect(b.reply.toLowerCase()).to.include('registr');",
+                  "    });",
+                  "  }",
+                  "  console.log('respuesta:', b.reply);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 — history con formato inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"hola\",\n  \"history\": \"esto-no-es-un-array\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            },
+            "description": "El historial se valida igual que el resto: debe ser un array de mensajes con role y content."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Conversaciones",
+      "description": "Contenedores de mensajes (`conv_…`), independientes de las sesiones de agente.\n\n**No se pueden listar**: la API de OpenAI no expone `GET /conversations`. Solo se opera con un id conocido, así que guardá el que devuelve la creación.\n\nA diferencia de las sesiones, el borrado es inmediato: una conversación no ejecuta nada, solo almacena.",
+      "item": [
+        {
+          "name": "POST — crear conversación",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"metadata\": {\n    \"origen\": \"postman\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations"
+              ]
+            },
+            "description": "metadata es opcional: hasta 16 pares clave-valor, claves de 64 caracteres y valores de 512.\n\nEl id se guarda en {{conversationId}} para las peticiones siguientes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('id con prefijo conv_', () => {",
+                  "    pm.expect(body.id).to.match(/^conv_/);",
+                  "  });",
+                  "  pm.collectionVariables.set('conversationId', body.id);",
+                  "  console.log('conversationId:', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET — leer conversación y sus mensajes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/{{conversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "{{conversationId}}"
+              ]
+            },
+            "description": "Devuelve la conversación con hasta 50 mensajes."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test('trae itemCount', () => {",
+                  "    pm.expect(body.itemCount).to.be.a('number');",
+                  "  });",
+                  "  console.log('mensajes:', body.itemCount);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE — borrar un mensaje suelto",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/{{conversationId}}/items/msg_REEMPLAZAR",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "{{conversationId}}",
+                "items",
+                "msg_REEMPLAZAR"
+              ]
+            },
+            "description": "Elimina un mensaje concreto y deja el resto intacto.\n\nEl id del mensaje sale del GET anterior (campo `items[].id`). Reemplazá `msg_REEMPLAZAR` por uno real."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Con el id de ejemplo sin reemplazar, se espera 400 o 404.",
+                  "pm.test('responde con un código esperado', () => {",
+                  "  pm.expect([200, 400, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE — borrar la conversación",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/{{conversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "{{conversationId}}"
+              ]
+            },
+            "description": "Borra la conversación y todos sus mensajes. Inmediato e irreversible."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('confirma el borrado', () => {",
+                  "    pm.expect(pm.response.json().deleted).to.be.true;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 — leer una conversación inexistente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/conv_noexiste123",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "conv_noexiste123"
+              ]
+            },
+            "description": "Un id con formato válido pero inexistente devuelve 404, no 502: el error es del cliente, no del servicio."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 — id con formato inválido",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/conversations/no-es-un-id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "conversations",
+                "no-es-un-id"
+              ]
+            },
+            "description": "Se valida la forma del id antes de llamar a OpenAI."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sesiones (mantenimiento)",
+      "description": "Sesiones de agente (`sess_…`). Si un turno se interrumpe, la sesión puede quedarse en `in_progress` y ocupar una ranura de concurrencia.\n\nUna sesión solo se puede borrar si está `idle` o `failed`, por eso la limpieza primero cancela el turno y después borra.",
+      "item": [
+        {
+          "name": "GET — listar sesiones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions"
+              ]
+            },
+            "description": "Devuelve todas las sesiones con su estado y marca cuáles están atascadas (más de 3 minutos sin actividad y sin estado terminal)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  console.log('total:', body.total, '| atascadas:', body.stuck);",
+                  "  console.log('por estado:', JSON.stringify(body.byStatus));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST — limpieza en seco (dry-run)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/cleanup?dryRun=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions",
+                "cleanup"
+              ],
+              "query": [
+                {
+                  "key": "dryRun",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Informa qué se cancelaría y qué se borraría, SIN tocar nada. Es el modo seguro para revisar antes de ejecutar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  pm.test('es dry-run', () => pm.expect(b.dryRun).to.be.true);",
+                  "  console.log('cancelaría:', b.wouldCancel?.length ?? 0);",
+                  "  console.log('borraría  :', b.wouldDelete?.length ?? 0);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST — limpieza real",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/cleanup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions",
+                "cleanup"
+              ]
+            },
+            "description": "Cancela el turno de las sesiones atascadas, espera unos segundos y borra las que hayan quedado en estado borrable.\n\nPuede tardar ~15s por la espera entre fases."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  console.log('canceladas:', b.cancelled?.length ?? 0);",
+                  "  console.log('borradas  :', b.deleted?.length ?? 0);",
+                  "  console.log('fallos    :', b.failed?.length ?? 0);",
+                  "  console.log('restante  :', JSON.stringify(b.remaining));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST — cancelar el turno de una sesión",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/{{sessionId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions",
+                "{{sessionId}}",
+                "cancel"
+              ]
+            },
+            "description": "La cancelación se envía como un evento a la sesión: no existe un método `cancel()` en el SDK.\n\nSi el turno estaba corriendo, la sesión vuelve a `idle` y ya se puede borrar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200 o 404', () => {",
+                  "  pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE — borrar una sesión",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/{{sessionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions",
+                "{{sessionId}}"
+              ]
+            },
+            "description": "Solo funciona si la sesión está `idle` o `failed`. En otro caso OpenAI devuelve 409."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde con un código esperado', () => {",
+                  "  pm.expect([200, 404, 409, 502]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Agentes (mantenimiento)",
+      "description": "Un agente (`agent_…`) guarda las instructions, el knowledge y las tools.\n\n⚠️ **Borrar un agente es IRREVERSIBLE.** Por eso el DELETE exige repetir el id en el cuerpo, y el backend se niega a borrar el agente que está usando (`OPENAI_AGENT_ID`).",
+      "item": [
+        {
+          "name": "GET — listar agentes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents"
+              ]
+            },
+            "description": "Marca con `inUse: true` el agente configurado en el backend."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  for (const a of b.agents) {",
+                  "    console.log(`${a.id} \"${a.name}\" ${a.model}${a.inUse ? ' ← EN USO' : ''}`);",
+                  "  }",
+                  "  const other = b.agents.find((a) => !a.inUse);",
+                  "  // Solo sobreescribimos si hay un agente que NO esté en uso:\n  // si no, dejamos el placeholder para que las pruebas de\n  // validación sigan teniendo un id con formato correcto.\n  if (other) pm.collectionVariables.set('agentId', other.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET — configuración de un agente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}"
+              ]
+            },
+            "description": "Devuelve la configuración completa, incluidas las instructions. Útil para respaldarlas antes de borrar el agente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde 200 o 404', () => {",
+                  "  pm.expect([200, 404]).to.include(pm.response.code);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 — borrar sin confirmación",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}"
+              ]
+            },
+            "description": "Sin el cuerpo `{ \"confirm\": \"<id>\" }` el backend rechaza la operación. Es la red de seguridad contra un DELETE lanzado por error.\n\nCon el id de ejemplo (inexistente) la validación de confirmación se evalúa primero, así que responde 400."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('no borra sin confirmación', () => {",
+                  "  // 400 = faltó el confirm (lo esperado).",
+                  "  // 404 = además el agente no existe. En ninguno de los dos",
+                  "  //       casos se borró nada, que es lo que se comprueba.",
+                  "  pm.expect([400, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 400) {",
+                  "  pm.test('explica que falta la confirmación', () => {",
+                  "    pm.expect(pm.response.json().message).to.include('confirm');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE — borrar un agente (irreversible)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-admin-token",
+                "value": "{{adminToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": \"{{agentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/agents/{{agentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents",
+                "{{agentId}}"
+              ]
+            },
+            "description": "⚠️ DESTRUCTIVO: borra las instructions y el knowledge del agente, sin vuelta atrás.\n\nEl `confirm` del cuerpo debe coincidir exactamente con el id de la URL.\n\nEl backend rechaza borrar el agente marcado como `inUse`: hay que apuntar OPENAI_AGENT_ID a otro primero."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responde con un código esperado', () => {",
+                  "  pm.expect([200, 400, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "  const b = pm.response.json();",
+                  "  console.log('eliminado:', b.agent?.name, '-', b.agent?.instructionsLength, 'caracteres de instructions');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Errores y seguridad",
+      "item": [
+        {
+          "name": "401 — mantenimiento sin token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions"
+              ]
+            },
+            "description": "Las rutas de mantenimiento exigen `x-admin-token`. El chat (`/api/chat`) no lo necesita."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 — token incorrecto",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-admin-token",
+                "value": "token-invalido"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "agents"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 401', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 — chat con body vacío",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            },
+            "description": "Falta 'message'. Se corta en el controller SIN llamar al agente: no se gasta crédito."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));",
+                  "pm.test('formato de error correcto', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.status).to.eql('error');",
+                  "  pm.expect(b).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 — chat con message vacío",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"   \"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 — sessionId con formato inválido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"hola\",\n  \"sessionId\": \"../../etc/passwd\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "chat"
+              ]
+            },
+            "description": "Validamos la forma del id antes de usarlo, para no pasar basura a la API."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 — ruta inexistente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/noexiste",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "noexiste"
+              ]
+            },
+            "description": "Lo maneja el middleware 404 de app.js."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

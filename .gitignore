@@ -1,0 +1,29 @@
+# Dependencias
+node_modules/
+
+# Variables de entorno — NUNCA subir los .env reales (contienen secretos)
+.env
+.env.local
+.env.*.local
+
+# Build del frontend
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Metadatos que Windows crea al descargar archivos
+*:Zone.Identifier
+
+# Instructions del asistente y respaldos del agente.
+# Contienen el knowledge del negocio (procedimientos, bancos, comisiones,
+# datos de contacto): quedan fuera del repo. Ver el .example para la forma
+# del archivo y el README para regenerarlo desde el agente real.
+backend/src/config/fallbackInstructions.txt
+backend/backups/

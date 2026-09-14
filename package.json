@@ -1,0 +1,17 @@
+{
+  "name": "cocochat",
+  "version": "1.0.0",
+  "description": "Clon mínimo de ChatGPT para aprender el flujo React → Express → OpenAI",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,magenta \"pnpm --filter cocochat-backend dev\" \"pnpm --filter cocochat-frontend dev\"",
+    "dev:backend": "pnpm --filter cocochat-backend dev",
+    "dev:frontend": "pnpm --filter cocochat-frontend dev",
+    "build": "pnpm --filter cocochat-frontend build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "packageManager": "pnpm@12.4.1"
+}
