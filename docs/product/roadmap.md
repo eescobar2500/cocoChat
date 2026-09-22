@@ -20,7 +20,7 @@ Nada de "seis etapas y en la séptima se ve algo". La funcionalidad actual
 
 ---
 
-## Etapa 0 — Endurecer lo que ya existe
+## Etapa 0 — Endurecer lo que ya existe `IMPLEMENTADO`
 
 **Por qué primero**: hoy `POST /api/chat` es público, sin autenticación ni
 límite de peticiones, con CORS abierto y usando una key de pago. Es un riesgo
@@ -36,9 +36,14 @@ económico inmediato, y no depende de ninguna decisión de producto.
 - Pruebas automatizadas mínimas: no hay ninguna, y las etapas siguientes
   tocan seguridad.
 
-**Bloqueada por**: nada. Puede empezar hoy.
+**Bloqueada por**: nada.
 **Terminada cuando**: un tercero no puede consumir la key, y cada turno queda
 registrado con su consumo.
+
+**Hecho.** El consumo se escribe como una línea JSON por turno
+(`services/usageService.js`), no en base de datos: es un apaño deliberado
+hasta la Etapa 1. Queda fuera el tope de gasto en el panel de OpenAI, que es
+una configuración de la cuenta y no del código.
 
 ---
 

@@ -17,9 +17,58 @@ if (missing.length > 0) {
   );
 }
 
+const nodeEnv = process.env.NODE_ENV || "development";
+
+// Lista de orígenes autorizados, separados por comas. En desarrollo, si no
+// se define, se asume el Vite local; en producción no hay valor por
+// defecto: una lista vacía bloquea todos los navegadores, que es
+// preferible a dejar la API abierta a cualquier sitio.
+const parseOrigins = (raw) =>
+  (raw ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+const corsOrigins = process.env.CORS_ORIGINS
+  ? parseOrigins(process.env.CORS_ORIGINS)
+  : nodeEnv === "development"
+    ? ["http://localhost:5173"]
+    : [];
+
+if (corsOrigins.length === 0) {
+  console.warn(
+    "[env] CORS_ORIGINS está vacía: ningún navegador podrá llamar a la API."
+  );
+}
+
+const positiveInt = (raw, fallback) => {
+  const value = Number(raw);
+
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+};
+
 const env = {
   port: Number(process.env.PORT) || 3001,
-  nodeEnv: process.env.NODE_ENV || "development",
+  nodeEnv,
+
+  // Número de proxies de confianza delante de la app. Sin esto, detrás de
+  // un balanceador todas las peticiones comparten la IP del proxy y el
+  // límite de peticiones se aplicaría a todos los usuarios a la vez.
+  trustProxy: positiveInt(process.env.TRUST_PROXY, 0),
+
+  corsOrigins,
+
+  // Límite de peticiones de /api/chat. Cada turno cuesta dinero, así que
+  // el tope es bajo a propósito.
+  chatRateLimit: {
+    windowMs: positiveInt(process.env.CHAT_RATE_LIMIT_WINDOW_MS, 60_000),
+    max: positiveInt(process.env.CHAT_RATE_LIMIT_MAX, 20),
+  },
+
+  // Archivo donde se acumula el consumo de tokens, una línea JSON por
+  // turno. Es un apaño hasta que exista base de datos: sin este dato no
+  // se puede calcular el coste real por conversación.
+  usageLogFile: process.env.USAGE_LOG_FILE || null,
 
   // Llave para las rutas de mantenimiento (/api/sessions). Si no está
   // definida, esas rutas quedan deshabilitadas: preferimos que no

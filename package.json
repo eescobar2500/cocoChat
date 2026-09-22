@@ -8,7 +8,8 @@
     "dev": "concurrently -n backend,frontend -c blue,magenta \"pnpm --filter cocochat-backend dev\" \"pnpm --filter cocochat-frontend dev\"",
     "dev:backend": "pnpm --filter cocochat-backend dev",
     "dev:frontend": "pnpm --filter cocochat-frontend dev",
-    "build": "pnpm --filter cocochat-frontend build"
+    "build": "pnpm --filter cocochat-frontend build",
+    "test": "pnpm --filter cocochat-backend test"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
