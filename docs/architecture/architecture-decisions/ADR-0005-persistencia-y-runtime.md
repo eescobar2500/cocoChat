@@ -1,7 +1,9 @@
 # ADR-0005 — Persistencia propia y abstracción del proveedor de modelo
 
-- **Estado**: Propuesto
-- **Fecha**: 2026-01
+- **Estado**: **Aceptado con una precisión** — validado 2026-09. El dueño de
+  producto decide además que **los agentes viven en CocoChat**, no en la
+  plataforma de OpenAI (ver "Decisión", punto 5).
+- **Fecha**: 2026-01, confirmado 2026-09
 - **Ámbito**: Datos y dependencias externas
 
 ## Contexto
@@ -44,6 +46,15 @@ entero.
 2. Extraer un puerto `AgentRuntime` con dos implementaciones.
 3. Adoptar una librería de orquestación de terceros (LangChain y similares).
 
+**Dónde vive la definición del agente**
+
+1. En la plataforma de OpenAI (situación actual): el agente es un recurso
+   ajeno referenciado por `OPENAI_AGENT_ID`. Delega trabajo, pero impide
+   versionar, auditar y hacer *rollback* desde el producto, y ata el
+   catálogo de agentes a un proveedor concreto.
+2. En CocoChat: instrucciones, parámetros y herramientas son datos propios;
+   el proveedor solo genera texto y solicita herramientas.
+
 ## Decisión
 
 - **PostgreSQL** como base única del MVP (opción 2), con JSONB para esquemas
@@ -59,14 +70,38 @@ entero.
 - La verdad sobre conversaciones y mensajes pasa a estar **en CocoChat**. El
   estado del proveedor (`sess_…`, `conv_…`) se guarda como referencia externa,
   no como fuente de verdad.
+- **El agente vive en CocoChat** (decisión de 2026-09). No se crean ni se
+  gestionan agentes en la plataforma de OpenAI: las instrucciones, los
+  parámetros y el catálogo de herramientas son datos de CocoChat
+  (`agent_configurations`), y el proveedor recibe en cada turno lo que el
+  orquestador le manda.
+
+  Consecuencia directa: la implementación de referencia de `AgentRuntime`
+  pasa a ser **la Responses API**, que es sin estado y encaja con este
+  modelo; la Agents API y `OPENAI_AGENT_ID` quedan fuera del camino
+  principal. El bucle de *tool calling* es responsabilidad de CocoChat, lo
+  que era necesario de todos modos para poder autorizar, validar y auditar
+  cada llamada.
+
+  Consecuencia en el código actual: `backend/src/services/chatService.js`
+  (Agents API, espera de sesión y limpieza de sesiones atascadas) deja de ser
+  el camino principal, y `responsesChatService.js` pasa a serlo. Buena parte
+  de la complejidad de `waitForIdle` y del mantenimiento de sesiones
+  desaparece con ella.
 
 ## Consecuencias
 
 **Positivas**: se puede facturar, auditar, aislar y mostrar histórico; el
 producto sobrevive a un cambio de API del proveedor; el modo de respaldo deja
-de ser un interruptor global.
+de ser un interruptor global. Con los agentes en CocoChat, el versionado y el
+*rollback* de instrucciones son posibles de verdad, y añadir un proveedor
+nuevo (decisión de producto en [ADR-0006](ADR-0006-modelo-de-producto-y-costes.md))
+no obliga a recrear los agentes de cada cliente.
 
-**Negativas**: aparece una base de datos que operar, migraciones que gestionar
+**Negativas**: CocoChat asume trabajo que antes hacía el proveedor —el bucle
+de herramientas, el recorte del contexto y el control de iteraciones—, que es
+justo la pieza con más casos límite del sistema. Aparece una base de datos
+que operar, migraciones que gestionar
 y datos de conversaciones que custodiar —con las obligaciones de privacidad
 que eso conlleva—. Hay duplicidad de estado entre CocoChat y el proveedor, con
 riesgo de divergencia; se acota guardando solo referencias y no intentando

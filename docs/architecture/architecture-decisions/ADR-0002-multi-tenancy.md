@@ -1,8 +1,8 @@
 # ADR-0002 — Estrategia de multi-tenancy
 
-- **Estado**: **Propuesto — requiere validación** (depende de la elección
-  Modelo A / Modelo B, ver [`../../product/business-model.md`](../../product/business-model.md))
-- **Fecha**: 2026-01
+- **Estado**: **Aceptado** — validado por el dueño de producto al elegir el
+  Modelo A ([ADR-0006](ADR-0006-modelo-de-producto-y-costes.md))
+- **Fecha**: 2026-01, confirmado 2026-09
 - **Ámbito**: Datos y seguridad
 
 ## Contexto

@@ -3,6 +3,14 @@
 **Estado global: `PARCIAL`.** Existe exactamente un agente, definido fuera del
 sistema y compartido por todo el despliegue.
 
+> **Decisión 2026-09**: los agentes pasan a vivir **en CocoChat**. No se
+> gestionan agentes en la plataforma de OpenAI; el proveedor solo genera
+> texto y solicita herramientas, con la Responses API como implementación de
+> referencia de `AgentRuntime`
+> ([ADR-0005](../architecture/architecture-decisions/ADR-0005-persistencia-y-runtime.md)).
+> El bucle de *tool calling* (RF-AG-08) deja de ser opcional: es CocoChat
+> quien lo implementa.
+
 ## Objetivo
 
 Permitir que cada organización cree, configure, pruebe, publique y versione
@@ -36,7 +44,7 @@ con otro identificador.
 | RF-AG-04 | Volver a una versión anterior | `PROPUESTO` | MVP |
 | RF-AG-05 | Probar un agente en el panel sin afectar a producción | `PROPUESTO` | MVP |
 | RF-AG-06 | Autorizar herramientas concretas a un agente | `PROPUESTO` | MVP |
-| RF-AG-07 | El runtime se elige por organización, no por variable de entorno | `PROPUESTO` | MVP |
+| RF-AG-07 | El runtime y la credencial del proveedor se resuelven por organización, no por variable de entorno | `PROPUESTO` | MVP |
 | RF-AG-08 | Bucle de llamada a herramientas con tope de iteraciones | `PROPUESTO` | MVP |
 | RF-AG-09 | Consumo y latencia por agente | `PROPUESTO` | MVP |
 | RF-AG-10 | Varios agentes por organización con enrutado por canal | `PROPUESTO` | Post-MVP |
@@ -83,8 +91,9 @@ Se apoya en: el puerto `AgentRuntime`
 
 ## Riesgos
 
-- La Agents API que usa hoy `chatService.js` es beta; la abstracción de
-  runtime es la defensa.
+- Al traer el agente a CocoChat, el recorte del contexto, el tope de
+  iteraciones y el control de coste pasan a ser responsabilidad nuestra.
+  Antes los absorbía el proveedor.
 - El bucle de herramientas es la pieza con más casos límite del sistema
   (bucles infinitos, argumentos inválidos, respuestas enormes, latencia
   acumulada). Merece pruebas propias desde el primer día.

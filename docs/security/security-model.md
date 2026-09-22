@@ -99,6 +99,17 @@ segundo cliente.
 
 ## 4. Gestión de secretos `PROPUESTO`
 
+> **Actualizado 2026-09.** Con la decisión de BYOK
+> ([ADR-0006](../architecture/architecture-decisions/ADR-0006-modelo-de-producto-y-costes.md)),
+> CocoChat custodia **dos** tipos de secreto ajeno: las credenciales de los
+> conectores y las **claves de OpenAI de sus clientes**, que son claves de
+> facturación. Una filtración de las segundas se traduce en gasto directo
+> para el cliente, así que reciben el mismo trato: cifradas, sin lectura
+> desde la API, fuera de los logs, descifradas solo en ejecución y con
+> rotación soportada. La forma concreta de almacenamiento es la P12 de
+> [`../open-questions.md`](../open-questions.md), la última decisión
+> bloqueante pendiente.
+
 - Cifrado con AEAD (AES-256-GCM o XChaCha20-Poly1305) y clave maestra en un
   KMS o gestor de secretos; en base de datos solo el material cifrado.
 - La configuración **referencia** el secreto por id (`secretRef`). Un secreto

@@ -3,6 +3,13 @@
 > Estado: **actual = ninguno**; el resto es `PROPUESTO`.
 > No se generan migraciones hasta que este modelo se valide
 > ([ADR-0005](../architecture/architecture-decisions/ADR-0005-persistencia-y-runtime.md)).
+>
+> **Actualizado 2026-09**: se implementará con **Prisma**
+> ([ADR-0007](../architecture/architecture-decisions/ADR-0007-prisma-como-capa-de-datos.md)),
+> y se añade `provider_credentials` por la decisión de BYOK
+> ([ADR-0006](../architecture/architecture-decisions/ADR-0006-modelo-de-producto-y-costes.md)).
+> Este documento describe el modelo conceptual; el `schema.prisma` será su
+> traducción, no al revés.
 
 ## 1. Modelo de datos actual
 
@@ -27,7 +34,8 @@ tabla es coste de migración, de mantenimiento y de superficie de seguridad.
 | `users` | No | **Sí** | No hay producto sin quien entre al panel |
 | `memberships` | No | **Sí** | Relación usuario↔organización con rol |
 | `api_keys` | No | **Sí** | El backend del cliente tiene que autenticarse |
-| `agents` | No (solo un id en `.env`) | **Sí** | Núcleo del producto |
+| `provider_credentials` | No (`OPENAI_API_KEY` global) | **Sí** | BYOK: cada organización aporta su clave de OpenAI |
+| `agents` | No (solo un id en `.env`, y el agente vive en OpenAI) | **Sí** | Núcleo del producto; pasa a vivir en CocoChat |
 | `agent_configurations` | No | **Sí**, como versión de `agents` | Permite historial y *rollback* de instrucciones |
 | `connectors` | No | **Sí** | Núcleo de la integración |
 | `connector_credentials` | No | **Sí** | Secretos cifrados, separados de la configuración |
@@ -48,6 +56,7 @@ erDiagram
   ORGANIZATIONS ||--o{ MEMBERSHIPS : tiene
   USERS ||--o{ MEMBERSHIPS : pertenece
   ORGANIZATIONS ||--o{ API_KEYS : emite
+  ORGANIZATIONS ||--o{ PROVIDER_CREDENTIALS : aporta
   ORGANIZATIONS ||--o{ AGENTS : posee
   ORGANIZATIONS ||--o{ CONNECTORS : posee
   AGENTS ||--o{ AGENT_CONFIGURATIONS : versiona
@@ -98,11 +107,28 @@ Se omite repetirlo en cada ficha.
   `key_hash`, `scopes`, `last_used_at`, `expires_at`, `revoked_at`.
 - **Regla**: el valor se muestra una sola vez; se guarda *hasheado*.
 
+### `provider_credentials`
+- **Propósito**: la clave del proveedor de modelo que aporta la organización
+  (BYOK). Hoy esto es `OPENAI_API_KEY`, una variable global del proceso.
+- **Atributos**: `id`, `organization_id`, `provider` (`openai` en el MVP),
+  `ciphertext`, `key_version`, `label`, `last_used_at`, `last_error_at`,
+  `revoked_at`.
+- **Restricción**: una credencial activa por `(organization_id, provider)`;
+  dos durante una rotación.
+- **Reglas**: mismo trato que `connector_credentials` —no se devuelve por la
+  API, no aparece en logs, se descifra solo en ejecución—. Se valida con una
+  llamada de prueba al guardarla; si no, el fallo aparece a mitad de una
+  conversación.
+- **Riesgo**: es una clave de **facturación** ajena. Una filtración se
+  traduce en gasto directo para el cliente. `last_error_at` permite
+  distinguir "su clave no tiene saldo" de "CocoChat falla", que es una
+  distinción de soporte, no cosmética.
+
 ### `agents`
-- **Propósito**: agente configurable del cliente.
+- **Propósito**: agente configurable del cliente. Desde ADR-0005, **vive en
+  CocoChat**: no es una referencia a un agente de OpenAI.
 - **Atributos**: `id`, `organization_id`, `name`, `description`, `status`
-  (`draft`/`published`/`archived`), `active_configuration_id`,
-  `external_agent_ref` (p. ej. `agent_…` de OpenAI, si el runtime lo usa).
+  (`draft`/`published`/`archived`), `active_configuration_id`.
 - **Índices**: `(organization_id, status)`.
 
 ### `agent_configurations`
@@ -111,7 +137,8 @@ Se omite repetirlo en cada ficha.
   y explicar por qué el agente respondió como respondió hace un mes.
 - **Atributos**: `id`, `organization_id`, `agent_id`, `version`,
   `instructions`, `model`, `params` (JSONB: temperatura, tope de tokens),
-  `runtime` (`openai_agents`/`openai_responses`), `published_at`, `created_by`.
+  `provider` (`openai`), `runtime` (`openai_responses` en el MVP),
+  `published_at`, `created_by`.
 - **Riesgo**: las instrucciones pueden contener conocimiento sensible del
   negocio; cifrado en reposo y acceso por rol.
 
@@ -185,6 +212,11 @@ Se omite repetirlo en cada ficha.
 
 ## 5. Reglas de integridad transversales
 
+> Con Prisma, estas reglas **no se aplican solas**. Las FK compuestas y las
+> políticas de RLS se escriben a mano en SQL dentro de las migraciones, y el
+> filtro por organización depende de cómo se use el cliente. Ver las tres
+> condiciones de [ADR-0007](../architecture/architecture-decisions/ADR-0007-prisma-como-capa-de-datos.md).
+
 1. Toda FK entre tablas de negocio es compuesta con `organization_id`.
 2. No se borra físicamente nada que tenga registros de ejecución asociados:
    borrado lógico (`archived_at`) para conservar la explicabilidad de la
@@ -193,13 +225,16 @@ Se omite repetirlo en cada ficha.
    misma organización.
 4. Una `tool_definition` con `side_effects != none` exige
    `requires_confirmation = true` mientras no exista el flujo de confirmación.
-5. Las credenciales no tienen `SELECT` disponible desde la API en ningún rol.
+5. Las credenciales —de conector y de proveedor— no tienen `SELECT`
+   disponible desde la API en ningún rol.
+6. Una organización sin `provider_credential` activa no puede conversar: se
+   rechaza con un error accionable, no con un fallo del proveedor.
 
 ## 6. Qué no se modela todavía y por qué
 
-- **Facturación y suscripciones**: hasta que no se decida quién paga los
-  tokens ([`../open-questions.md`](../open-questions.md)), modelar precios es
-  especular.
+- **Facturación y suscripciones**: con BYOK, CocoChat no factura consumo,
+  solo membresía. Un campo `plan` en la organización basta hasta que haya
+  pasarela de pago.
 - **Knowledge propio / RAG**: hoy lo cubre el agente de OpenAI. Traerlo a
   CocoChat implica *embeddings*, almacén vectorial e ingesta: un producto
   dentro del producto.

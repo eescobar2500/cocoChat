@@ -1,6 +1,7 @@
 # ADR-0004 — Primer mecanismo de integración: conector HTTP declarativo, de solo lectura
 
-- **Estado**: Propuesto
+- **Estado**: **Aceptado** — validado 2026-09: MVP de solo lectura sobre
+  backends REST+JSON ([P4 y P5](../../open-questions.md))
 - **Fecha**: 2026-01
 - **Ámbito**: Producto y seguridad
 - **Relacionado**: [`../integration-strategy.md`](../integration-strategy.md)

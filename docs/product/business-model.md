@@ -1,8 +1,11 @@
 # Modelos de producto: comparación
 
-> Estado: `PENDIENTE-VALIDAR`. Este documento **no recomienda un ganador**:
-> presenta la comparación para que la decisión se tome con criterios
-> explícitos. Es la decisión que más condiciona la arquitectura.
+> **DECIDIDO (2026-09): Modelo A con "trae tu propia clave" (híbrido 3).**
+> Registrado en [ADR-0006](../architecture/architecture-decisions/ADR-0006-modelo-de-producto-y-costes.md).
+>
+> La comparación se conserva íntegra a propósito: documenta con qué criterios
+> se decidió y qué se aceptaba a cambio. Si alguna vez se reconsidera, este
+> es el punto de partida.
 
 ## Los dos modelos
 
@@ -68,14 +71,16 @@ la multi-tenancy no se añade después sin migración de datos y auditoría.
    aparece demanda real. Mantiene una sola base de código si se diseña el
    aislamiento bien desde el principio.
 
-## MVP viable (propuesta, para validar)
+## MVP (decidido)
 
-Con lo que se sabe hoy, el MVP con menos riesgo es:
+Es exactamente la opción que se proponía, y la que se ha aprobado:
 
 - **Modelo A** (para no cerrarse la puerta a la escalabilidad comercial)
 - **con "trae tu propia key"** (híbrido 3, elimina el riesgo de márgenes)
 - **con un solo tipo de conector: HTTP declarativo de lectura**
   ([ADR-0004](../architecture/architecture-decisions/ADR-0004-motor-de-conectores.md))
+- **con OpenAI como único proveedor**, y el diseño preparado para añadir
+  otros después
 - **con 2 o 3 clientes piloto reales**, no con un producto abierto.
 
 El objetivo del MVP no es facturar: es responder a una pregunta concreta —
@@ -88,10 +93,15 @@ que la respuesta sea sí.
 No se inventan cifras. Para completar este análisis hacen falta datos que hoy
 no existen en el proyecto:
 
+Con BYOK, el coste de tokens deja de ser un riesgo de margen —ya no lo paga
+CocoChat—, pero sigue siendo un dato de venta: el cliente querrá saber qué le
+va a costar. Sigue pendiente de medir:
+
 - Coste medio de tokens por conversación en un caso real (medible con un
   piloto; hoy ni siquiera se guarda el `usage` que la API ya devuelve).
-- Disposición a pagar y precios de referencia del mercado objetivo.
+- Disposición a pagar por la membresía y precios de referencia del mercado
+  objetivo.
 - Volumen de conversaciones esperado por cliente.
-- Cuántos clientes objetivo exigirán que los datos no salgan de su
-  infraestructura (determina si el híbrido 1 es opcional u obligatorio).
-- Coste de soporte por cliente en cada modelo.
+- **Cuántos clientes abandonan el alta al pedirles su clave de OpenAI.** Con
+  BYOK decidido, esta es la métrica de riesgo principal del embudo.
+- Coste de soporte por cliente.
