@@ -93,6 +93,11 @@ POST /api/chat
 `sessionId` lo devuelve la primera respuesta y el cliente lo reenvía en los
 turnos siguientes. `history` solo lo usa el modo de respaldo.
 
+Con una API key de organización (`x-api-key: cck_…`, ver más abajo) el turno
+se contesta con la clave de OpenAI **de esa organización** en modo
+`responses`, el límite de peticiones es por organización y el consumo queda
+en `usage_records`. Sin API key funciona como siempre.
+
 ```
 GET /api/health
 ```
@@ -127,6 +132,36 @@ Tres recursos que conviene no confundir:
 | Sesión | `sess_` | Ejecuta un agente; puede atascarse | Sí |
 | Conversación | `conv_` | Solo almacena mensajes | No (la API no lo permite) |
 
+### Organizaciones (multi-tenant)
+
+Solo si hay `DATABASE_URL`. Ver [Multi-tenant](#multi-tenant) para el
+arranque.
+
+```
+POST   /api/organizations                 crear (x-admin-token) → { organization, owner }
+         { name, slug, owner: { email, password, name? } }
+GET    /api/organizations                 listar (x-admin-token)
+
+POST   /api/auth/login                    { email, password, organization: slug } → { token, expiresAt, user, organization }
+```
+
+Las siguientes exigen `Authorization: Bearer <token>` de un usuario de la
+organización; el tenant sale del token, nunca de la URL.
+
+```
+GET    /api/organization                  la organización del token
+GET    /api/organization/members          (owner, admin)
+POST   /api/organization/members          { email, password, role, name? }
+
+GET    /api/organization/api-keys         (owner, admin)
+POST   /api/organization/api-keys         { name } → la clave `cck_…` se muestra una sola vez
+DELETE /api/organization/api-keys/:id     revocar
+
+GET    /api/organization/provider-credentials   (owner, admin) nunca incluye la clave
+PUT    /api/organization/provider-credentials/openai   { apiKey, label? } se valida contra OpenAI
+DELETE /api/organization/provider-credentials/:id      revocar
+```
+
 ### Errores
 
 ```json
@@ -136,9 +171,12 @@ Tres recursos que conviene no confundir:
 | Código | Cuándo |
 |--------|--------|
 | 400 | Entrada mal formada |
-| 401 | Falta el token de administración o es inválido |
+| 401 | Falta el token de administración, la sesión o la API key, o son inválidos |
+| 403 | El rol del usuario no alcanza |
 | 404 | Ruta o recurso inexistente |
+| 409 | Slug, correo o miembro ya existente |
 | 413 | Mensaje demasiado largo |
+| 422 | La organización no tiene clave de OpenAI activa, o la clave no es válida |
 | 429 | Límite de uso de OpenAI |
 | 502 | Fallo de OpenAI o agente mal configurado |
 
@@ -149,6 +187,38 @@ Importá `backend/postman/cocoChat.postman_collection.json` y pegá tu
 
 Son 7 carpetas: health, chat (agentes), chat en modo respaldo, conversaciones,
 sesiones, agentes y errores.
+
+## Multi-tenant
+
+La Etapa 1 del [roadmap](docs/product/roadmap.md) añade PostgreSQL con
+Prisma, organizaciones con RLS forzada y claves de OpenAI por cliente
+(BYOK) cifradas por sobre. Es opcional: sin `DATABASE_URL` nada de esto se
+activa.
+
+```bash
+docker run -d --name cocochat-pg -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=cocochat -p 5432:5432 postgres:16-alpine
+
+# 1. Migrar con el rol administrador (dueño de las tablas)
+MIGRATION_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cocochat \
+  pnpm --filter cocochat-backend db:migrate
+pnpm --filter cocochat-backend db:generate
+
+# 2. Crear el rol con el que conecta la API (sin BYPASSRLS, no dueño)
+psql postgresql://postgres:postgres@localhost:5432/cocochat \
+  -f backend/prisma/roles.example.sql   # cambiá la contraseña antes
+
+# 3. En backend/.env
+#   DATABASE_URL=postgresql://cocochat_api:...@localhost:5432/cocochat
+#   SECRETS_MASTER_KEY=<32 bytes en base64>
+#   ADMIN_TOKEN=<para crear organizaciones>
+```
+
+El backend **no arranca** si el rol de `DATABASE_URL` es superuser, tiene
+`BYPASSRLS` o es dueño de las tablas: con cualquiera de esas tres cosas las
+políticas de RLS no filtran nada. `backend/test/tenancy.test.js` demuestra
+el aislamiento entre dos organizaciones contra una base real; corre si
+existe `TEST_DATABASE_URL` (en CI, siempre).
 
 ## Variables de entorno
 
@@ -163,8 +233,16 @@ sesiones, agentes y errores.
 | `OPENAI_FALLBACK_MODEL` | no | `gpt-5.4-mini` |
 | `PORT` | no | `3001` |
 | `NODE_ENV` | no | `development` |
+| `DATABASE_URL` | no² | — |
+| `SECRETS_MASTER_KEY` | con `DATABASE_URL` | — |
+| `SECRETS_MASTER_KEY_VERSION` | no | `1` |
+| `SECRETS_PREVIOUS_MASTER_KEYS` | no | — |
+| `SESSION_TTL_SECONDS` | no | `43200` |
 
-¹ Sin ella las rutas de mantenimiento quedan deshabilitadas.
+¹ Sin ella las rutas de mantenimiento y la creación de organizaciones
+quedan deshabilitadas.
+² Sin ella la API funciona en modo de un solo agente (Etapa 0).
+El resto de variables está comentado en `backend/.env.example`.
 
 ### `frontend/.env`
 

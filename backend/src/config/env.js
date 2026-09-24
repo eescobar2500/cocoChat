@@ -47,9 +47,70 @@ const positiveInt = (raw, fallback) => {
   return Number.isInteger(value) && value > 0 ? value : fallback;
 };
 
+// Clave maestra del cifrado por sobre: 32 bytes en base64. Con ella se
+// envuelven las claves de datos de cada organización; nunca cifra datos
+// directamente, para que rotarla sea re-envolver claves y no re-cifrar
+// tablas. `SECRETS_MASTER_KEY_VERSION` viaja con cada secreto guardado.
+const parseMasterKey = (raw) => {
+  if (!raw) {
+    return null;
+  }
+
+  const key = Buffer.from(raw, "base64");
+
+  if (key.length !== 32) {
+    throw new Error(
+      "SECRETS_MASTER_KEY debe ser 32 bytes en base64. Generá una con:\n" +
+        `  node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`
+    );
+  }
+
+  return key;
+};
+
+const databaseUrl = process.env.DATABASE_URL || null;
+const secretsMasterKey = parseMasterKey(process.env.SECRETS_MASTER_KEY);
+
+if (databaseUrl && !secretsMasterKey) {
+  throw new Error(
+    "Con DATABASE_URL definida hace falta SECRETS_MASTER_KEY: sin ella no se " +
+      "pueden guardar las claves de OpenAI de las organizaciones."
+  );
+}
+
+function parsePreviousKeys(raw) {
+  const keys = new Map();
+
+  for (const entry of (raw ?? "").split(",")) {
+    const [version, value] = entry.split(":").map((s) => s.trim());
+
+    if (version && value) {
+      keys.set(Number(version), parseMasterKey(value));
+    }
+  }
+
+  return keys;
+}
+
 const env = {
   port: Number(process.env.PORT) || 3001,
   nodeEnv,
+
+  // Sin DATABASE_URL la API funciona como en la Etapa 0: un solo agente
+  // con la clave del proceso y sin organizaciones. Las rutas de tenant
+  // responden 404, igual que las de mantenimiento sin ADMIN_TOKEN.
+  databaseUrl,
+
+  secrets: {
+    masterKey: secretsMasterKey,
+    masterKeyVersion: positiveInt(process.env.SECRETS_MASTER_KEY_VERSION, 1),
+    // Claves maestras anteriores, para descifrar durante una rotación:
+    // "1:base64,2:base64".
+    previousMasterKeys: parsePreviousKeys(process.env.SECRETS_PREVIOUS_MASTER_KEYS),
+  },
+
+  // Duración de la sesión de usuario del panel.
+  sessionTtlSeconds: positiveInt(process.env.SESSION_TTL_SECONDS, 12 * 60 * 60),
 
   // Número de proxies de confianza delante de la app. Sin esto, detrás de
   // un balanceador todas las peticiones comparten la IP del proxy y el

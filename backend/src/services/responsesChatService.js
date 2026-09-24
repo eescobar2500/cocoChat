@@ -72,15 +72,26 @@ const MAX_HISTORY = 20;
  * @param {string} [sessionId] Se ignora: este modo no usa sesiones.
  * @param {Array<{role: string, content: string}>} [history]
  *   Historial que manda el cliente. Sin él, cada mensaje es independiente.
+ * @param {{apiKey?: string}} [options]
+ *   `apiKey`: clave de la organización (BYOK). Sin ella se usa la del
+ *   proceso. No se cachea un cliente por organización: el SDK es barato de
+ *   construir y así la clave no queda retenida en memoria más que el turno.
  * @returns {Promise<{reply: string, sessionId: string|null, usage: object}>}
  */
-export async function sendMessageViaResponses(message, sessionId, history = []) {
+export async function sendMessageViaResponses(
+  message,
+  sessionId,
+  history = [],
+  { apiKey } = {}
+) {
   const input = [
     ...history.slice(-MAX_HISTORY),
     { role: "user", content: message },
   ];
 
-  const response = await getClient().responses.create({
+  const client = apiKey ? new OpenAI({ apiKey }) : getClient();
+
+  const response = await client.responses.create({
     model: env.openai.fallbackModel,
     instructions: getInstructions(),
     input,

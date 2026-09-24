@@ -20,9 +20,10 @@
 | P11 | Capa de datos | **Prisma**, con tres condiciones sobre RLS | [ADR-0007](architecture/architecture-decisions/ADR-0007-prisma-como-capa-de-datos.md) |
 | — | Proveedor de modelo | **Solo OpenAI** en el MVP, multi-proveedor después | ADR-0006 |
 
-Queda **una decisión bloqueante pendiente**: P12, dónde se guardan los
-secretos. Con BYOK gana peso, porque ahora CocoChat custodia también claves
-de facturación de sus clientes.
+No queda ninguna decisión bloqueante: P12 (dónde se guardan los secretos)
+se resolvió con la propuesta de cifrado por sobre, arrancando con la clave
+maestra en variable de entorno. Pasar a KMS sigue abierto como decisión de
+infraestructura, no de esquema.
 
 ## Decididas
 
@@ -70,14 +71,19 @@ de facturación de sus clientes.
   (rol sin `BYPASSRLS`, `set_config` por transacción, acceso encapsulado y
   prueba de aislamiento). Las tres condiciones están en ADR-0007.
 
-## Bloqueante pendiente
-
-### P12. ¿Dónde se guardan los secretos?
+### P12. ¿Dónde se guardan los secretos? — **DECIDIDA (MVP): cifrado por sobre con clave maestra en entorno**
+- **Implementado** en `backend/src/services/secretsService.js`: AES-256-GCM,
+  una clave de datos por organización envuelta con `SECRETS_MASTER_KEY`
+  (`data_key_ciphertext`, `data_key_version`), y cada credencial cifrada con
+  la clave de datos (`ciphertext`, `key_version`). El id de la organización
+  va como dato asociado, así un sobre copiado a otra fila no se abre.
+  Rotar la maestra es re-envolver claves de datos, sin tocar credenciales.
+- **Pendiente**: sustituir la variable de entorno por KMS cuando se decida
+  el proveedor de nube. La estructura ya lo permite.
 - **Por qué importa**: CocoChat custodia dos tipos de secreto ajeno —las
   credenciales de los conectores y, desde la decisión de BYOK, las claves de
   facturación de OpenAI de sus clientes—. Una filtración de las segundas se
   traduce en gasto directo para el cliente.
-- **Bloquea**: Etapa 1 (no se puede guardar una clave sin decidir cómo).
 - **Propuesta**: **cifrado por sobre**. Cada organización tiene una clave de
   datos; esa clave se cifra con una clave maestra de un KMS (AWS KMS o GCP
   KMS); en la base solo queda el *ciphertext* y la versión de clave. Si el
