@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cocochat
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIGRATION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/cocochat
+      # El test de aislamiento conecta con el rol de la API, que no es dueño
+      # de las tablas ni puede saltarse RLS.
+      TEST_DATABASE_URL: postgresql://cocochat_api:api@localhost:5432/cocochat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter cocochat-backend db:migrate
+      - run: pnpm --filter cocochat-backend db:generate
+      - name: Crear rol de la API
+        run: |
+          psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+            "CREATE ROLE cocochat_api LOGIN PASSWORD 'api' NOBYPASSRLS NOSUPERUSER IN ROLE cocochat_app;"
+      - run: pnpm --filter cocochat-backend test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter cocochat-frontend build

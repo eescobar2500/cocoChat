@@ -1,6 +1,7 @@
 import { appendFile } from "node:fs/promises";
 
 import env from "../config/env.js";
+import { withOrganization } from "../db/prisma.js";
 
 // Registro del consumo de tokens de cada turno.
 //
@@ -25,11 +26,18 @@ const pickNumber = (usage, ...keys) => {
   return null;
 };
 
-export function buildUsageRecord({ usage, mode, sessionId, durationMs }) {
+export function buildUsageRecord({
+  usage,
+  mode,
+  sessionId,
+  durationMs,
+  organizationId = null,
+}) {
   return {
     type: "usage",
     at: new Date().toISOString(),
     mode,
+    organizationId,
     sessionId: sessionId ?? null,
     durationMs,
     inputTokens: pickNumber(usage, "input_tokens", "prompt_tokens"),
@@ -44,14 +52,28 @@ export async function recordUsage(details) {
 
   console.log(line);
 
-  if (!env.usageLogFile) {
-    return record;
-  }
-
+  // Perder una métrica no puede tumbar una conversación que ya se pagó.
   try {
-    await appendFile(env.usageLogFile, `${line}\n`);
+    if (record.organizationId) {
+      // Con organización el consumo va a la base: es el dato de la
+      // facturación y del control de abuso por tenant.
+      await withOrganization(record.organizationId, (tx) =>
+        tx.usageRecord.create({
+          data: {
+            organizationId: record.organizationId,
+            mode: record.mode,
+            sessionId: record.sessionId,
+            durationMs: record.durationMs,
+            inputTokens: record.inputTokens,
+            outputTokens: record.outputTokens,
+            totalTokens: record.totalTokens,
+          },
+        })
+      );
+    } else if (env.usageLogFile) {
+      await appendFile(env.usageLogFile, `${line}\n`);
+    }
   } catch (error) {
-    // Perder una métrica no puede tumbar una conversación que ya se pagó.
     console.error(`[usageService] No se pudo escribir el consumo: ${error.message}`);
   }
 

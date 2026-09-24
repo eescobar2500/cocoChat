@@ -16,8 +16,20 @@ class ApiError extends Error {
     return new ApiError(401, message);
   }
 
+  static forbidden(message = "No tenés permiso para esta operación") {
+    return new ApiError(403, message);
+  }
+
   static notFound(message = "Recurso no encontrado") {
     return new ApiError(404, message);
+  }
+
+  static conflict(message = "El recurso ya existe") {
+    return new ApiError(409, message);
+  }
+
+  static unprocessable(message = "La petición no se pudo procesar") {
+    return new ApiError(422, message);
   }
 
   static payloadTooLarge(message = "La petición es demasiado grande") {

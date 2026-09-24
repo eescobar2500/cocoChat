@@ -1,8 +1,9 @@
 # Roadmap técnico por etapas
 
 > **Actualizado 2026-09** con las decisiones tomadas (Modelo A, BYOK, solo
-> lectura, agentes en CocoChat, Prisma). Queda **una** decisión bloqueante:
-> P12, la gestión de secretos, necesaria para la Etapa 1.
+> lectura, agentes en CocoChat, Prisma). P12 se resolvió con cifrado por
+> sobre y clave maestra en entorno para el MVP (ver
+> [preguntas abiertas](../open-questions.md)); la Etapa 1 está `PARCIAL`.
 >
 > Ninguna etapa se inicia sin validar antes las
 > [preguntas abiertas](../open-questions.md) que la bloquean.
@@ -47,29 +48,42 @@ una configuración de la cuenta y no del código.
 
 ---
 
-## Etapa 1 — Persistencia y multi-tenancy
+## Etapa 1 — Persistencia y multi-tenancy `PARCIAL`
 
 **Por qué**: todo lo demás cuelga de aquí. Sin organizaciones no hay agentes
 por cliente, ni conectores, ni auditoría.
 
-- PostgreSQL con **Prisma** y sus migraciones; `organizations`, `users`,
-  `memberships`, `api_keys`, `provider_credentials`.
-- Cifrado de secretos según lo que se decida en P12, y alta de la clave de
-  OpenAI del cliente (BYOK) con validación al guardarla.
-- Autenticación de usuarios y de servicio; `x-admin-token` pasa a ser solo
-  para operación interna.
-- `organization_id` en todo, RLS activada
+- `IMPLEMENTADO` PostgreSQL con **Prisma** y sus migraciones
+  (`backend/prisma/`); `organizations`, `users`, `memberships`, `api_keys`,
+  `provider_credentials`, `usage_records`.
+- `IMPLEMENTADO` Cifrado por sobre (AES-256-GCM, clave de datos por
+  organización envuelta con `SECRETS_MASTER_KEY`, rotación por versión) y
+  alta de la clave de OpenAI del cliente (BYOK) validada contra OpenAI al
+  guardarla. La clave nunca vuelve por la API ni aparece en logs.
+- `IMPLEMENTADO` Autenticación de usuarios (email + contraseña con scrypt,
+  sesión firmada, roles `owner`/`admin`/`member`) y de servicio (API keys
+  `cck_…` guardadas como hash). `x-admin-token` queda solo para crear
+  organizaciones y operación interna.
+- `IMPLEMENTADO` `organization_id` en todo y RLS **forzada**
   ([ADR-0002](../architecture/architecture-decisions/ADR-0002-multi-tenancy.md))
-  con las tres condiciones de Prisma
-  ([ADR-0007](../architecture/architecture-decisions/ADR-0007-prisma-como-capa-de-datos.md)):
-  rol sin `BYPASSRLS`, contexto por transacción y acceso encapsulado.
-- Conversaciones y mensajes propios; los IDs de OpenAI quedan como
-  referencias.
+  con las tres condiciones de
+  [ADR-0007](../architecture/architecture-decisions/ADR-0007-prisma-como-capa-de-datos.md):
+  el arranque aborta si el rol puede saltarse RLS, el contexto se fija con
+  `set_config(..., true)` dentro de cada transacción (`src/db/prisma.js`) y
+  ninguna ruta toca Prisma fuera de `withOrganization`/`withPlatform`.
+- `IMPLEMENTADO` `POST /api/chat` con API key de organización usa la clave
+  BYOK del tenant (Responses API) y persiste el consumo en `usage_records`;
+  sin API key sigue funcionando como en la Etapa 0.
+- `PENDIENTE` Conversaciones y mensajes propios; los IDs de OpenAI quedan
+  como referencias. Hoy la memoria sigue en el cliente (`history`).
+- `PENDIENTE` Panel en el frontend para login, miembros, API keys y clave
+  BYOK; hoy solo existe la API.
 
-**Bloqueada por**: P12 (gestión de secretos). El modelo de producto ya está
-decidido ([ADR-0006](../architecture/architecture-decisions/ADR-0006-modelo-de-producto-y-costes.md)).
-**Terminada cuando**: dos organizaciones conviven en el mismo despliegue sin
-poder verse, y existe una prueba automatizada que lo demuestra.
+**Bloqueada por**: nada. **Terminada cuando**: dos organizaciones conviven
+en el mismo despliegue sin poder verse, y existe una prueba automatizada
+que lo demuestra — `backend/test/tenancy.test.js` lo comprueba contra una
+base real con el rol de la API (corre en CI) y falta solo lo marcado
+`PENDIENTE`.
 
 ---
 

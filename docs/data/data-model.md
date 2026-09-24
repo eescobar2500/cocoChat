@@ -1,6 +1,6 @@
 # Modelo de datos
 
-> Estado: **actual = ninguno**; el resto es `PROPUESTO`.
+> Estado: `IMPLEMENTADO` organizations, users, memberships, api_keys, provider_credentials y usage_records (`backend/prisma/schema.prisma`); el resto es `PROPUESTO`.
 > No se generan migraciones hasta que este modelo se valide
 > ([ADR-0005](../architecture/architecture-decisions/ADR-0005-persistencia-y-runtime.md)).
 >

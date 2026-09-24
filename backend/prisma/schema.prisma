@@ -1,0 +1,122 @@
+// Traducción del modelo conceptual de docs/data/data-model.md (Etapa 1).
+//
+// Prisma no gestiona RLS: las políticas, el rol de la aplicación y las
+// FK compuestas viven en SQL dentro de prisma/migrations. Cada cambio de
+// esquema aquí obliga a revisar esas políticas (ADR-0007).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  plan      String   @default("free")
+  status    String   @default("active")
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Clave de datos de la organización, cifrada con la clave maestra
+  // (cifrado por sobre). Solo se descifra en memoria y en el momento de
+  // usarla. `dataKeyVersion` identifica qué clave maestra la envolvió,
+  // para rotar sin migrar el esquema.
+  dataKeyCiphertext String @map("data_key_ciphertext")
+  dataKeyVersion    Int    @map("data_key_version")
+
+  memberships         Membership[]
+  apiKeys             ApiKey[]
+  providerCredentials ProviderCredential[]
+  usageRecords        UsageRecord[]
+
+  @@map("organizations")
+}
+
+// Única tabla de negocio sin organization_id: un usuario puede pertenecer
+// a varias organizaciones.
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String?
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  memberships Membership[]
+
+  @@map("users")
+}
+
+model Membership {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  role           String
+  acceptedAt     DateTime? @map("accepted_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("memberships")
+}
+
+model ApiKey {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String
+  prefix         String    @unique
+  keyHash        String    @map("key_hash")
+  scopes         String[]  @default(["chat"])
+  lastUsedAt     DateTime? @map("last_used_at")
+  expiresAt      DateTime? @map("expires_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+model ProviderCredential {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  provider       String    @default("openai")
+  ciphertext     String
+  keyVersion     Int       @map("key_version")
+  label          String?
+  lastUsedAt     DateTime? @map("last_used_at")
+  lastErrorAt    DateTime? @map("last_error_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, provider])
+  @@map("provider_credentials")
+}
+
+// Sustituye al archivo JSON-lines de la Etapa 0 cuando hay base de datos.
+model UsageRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  mode           String
+  sessionId      String?  @map("session_id")
+  durationMs     Int      @map("duration_ms")
+  inputTokens    Int?     @map("input_tokens")
+  outputTokens   Int?     @map("output_tokens")
+  totalTokens    Int?     @map("total_tokens")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@map("usage_records")
+}
