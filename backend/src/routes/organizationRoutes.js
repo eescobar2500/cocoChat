@@ -1,5 +1,19 @@
 import { Router } from "express";
 
+import env from "../config/env.js";
+import {
+  deleteAgent,
+  getAgentById,
+  getAgents,
+  getConfigurations,
+  getConversationById,
+  getConversations,
+  patchAgent,
+  postAgent,
+  postAgentChat,
+  postConfiguration,
+  postPublish,
+} from "../controllers/organizationAgentController.js";
 import {
   deleteApiKey,
   deleteProviderCredential,
@@ -59,3 +73,32 @@ organizationRouter.delete("/api-keys/:id", manage, asyncHandler(deleteApiKey));
 organizationRouter.get("/provider-credentials", manage, asyncHandler(getProviderCredentials));
 organizationRouter.put("/provider-credentials/openai", manage, asyncHandler(putOpenAIKey));
 organizationRouter.delete("/provider-credentials/:id", manage, asyncHandler(deleteProviderCredential));
+
+// Agentes: cualquier miembro puede verlos y probarlos; editar y publicar
+// es de owner/admin.
+const member = requireUser();
+
+organizationRouter.get("/agents", member, asyncHandler(getAgents));
+organizationRouter.post("/agents", manage, asyncHandler(postAgent));
+organizationRouter.get("/agents/:id", member, asyncHandler(getAgentById));
+organizationRouter.patch("/agents/:id", manage, asyncHandler(patchAgent));
+organizationRouter.delete("/agents/:id", manage, asyncHandler(deleteAgent));
+organizationRouter.get("/agents/:id/configurations", member, asyncHandler(getConfigurations));
+organizationRouter.post("/agents/:id/configurations", manage, asyncHandler(postConfiguration));
+organizationRouter.post(
+  "/agents/:id/configurations/:configurationId/publish",
+  manage,
+  asyncHandler(postPublish)
+);
+organizationRouter.post(
+  "/agents/:id/chat",
+  member,
+  createRateLimit({
+    ...env.chatRateLimit,
+    keyGenerator: (req) => `org:${req.auth.organizationId}`,
+  }),
+  asyncHandler(postAgentChat)
+);
+
+organizationRouter.get("/conversations", member, asyncHandler(getConversations));
+organizationRouter.get("/conversations/:id", member, asyncHandler(getConversationById));

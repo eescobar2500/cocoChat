@@ -1,10 +1,7 @@
 import env from "../config/env.js";
 
 import { sendMessageToAgent } from "../services/chatService.js";
-import {
-  markCredential,
-  resolveOpenAIKey,
-} from "../services/providerCredentialService.js";
+import { chatWithAgent } from "../services/agentConversationService.js";
 import { sendMessageViaResponses } from "../services/responsesChatService.js";
 import { recordUsage } from "../services/usageService.js";
 
@@ -12,32 +9,40 @@ import { validateChatRequest } from "../utils/validations/chatValidation.js";
 
 import ApiError from "../utils/ApiError.js";
 
-// Turno de una organización (BYOK): se usa su clave de OpenAI, descifrada
-// solo para esta llamada, y siempre la Responses API. La Agents API
-// depende de un agente de la plataforma de OpenAI que la organización no
-// tiene; el agente propio llega en la Etapa 2.
-async function chatForOrganization(organization, message, history) {
-  const credential = await resolveOpenAIKey(organization.id);
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-  try {
-    const result = await sendMessageViaResponses(message, null, history, {
-      apiKey: credential.apiKey,
-    });
-
-    markCredential(organization.id, credential.id, "lastUsedAt");
-
-    return result;
-  } catch (error) {
-    // Permite distinguir en soporte "su clave falla" de "CocoChat falla".
-    markCredential(organization.id, credential.id, "lastErrorAt");
-    throw error;
+const optionalUuid = (value, name) => {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
   }
+
+  if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
+    throw ApiError.badRequest(`El campo '${name}' no es un identificador válido`);
+  }
+
+  return value;
+};
+
+// Turno de una organización: su agente (datos de CocoChat), su clave BYOK
+// y su conversación persistida. `history` del cliente se ignora: la
+// memoria la lleva CocoChat en `conversationId`.
+async function chatForOrganization(organization, body) {
+  const result = await chatWithAgent(organization, {
+    message: body.message,
+    agentId: optionalUuid(body.agentId, "agentId"),
+    conversationId: optionalUuid(body.conversationId, "conversationId"),
+    endUserRef: body.endUserRef,
+  });
+
+  return { ...result, sessionId: result.conversationId };
 }
 
 export const postChat = async (req, res) => {
-  // `history` solo lo usa el modo de respaldo: la Responses API no guarda
-  // la conversación, así que el cliente puede reenviarla. En modo agentes
-  // se ignora, porque OpenAI ya tiene el contexto en la sesión.
+  // `history` solo lo usa el modo de respaldo sin organización: la
+  // Responses API no guarda la conversación, así que el cliente puede
+  // reenviarla. En modo agentes se ignora, porque OpenAI ya tiene el
+  // contexto en la sesión.
   const { message, sessionId, history } = req.body ?? {};
 
   // Validar SIEMPRE lo que llega de fuera: el frontend corre en el navegador
@@ -54,10 +59,10 @@ export const postChat = async (req, res) => {
   // Con API key de organización manda su clave; sin ella, el modo del
   // .env (CHAT_MODE). Ambos caminos devuelven la misma forma.
   const organization = req.organization ?? null;
-  const mode = organization ? "responses" : env.chatMode;
+  const mode = organization ? "agent" : env.chatMode;
 
   const result = organization
-    ? await chatForOrganization(organization, message, history)
+    ? await chatForOrganization(organization, req.body)
     : mode === "responses"
       ? await sendMessageViaResponses(message, sessionId, history)
       : await sendMessageToAgent(message, sessionId);
@@ -86,5 +91,14 @@ export const postChat = async (req, res) => {
     sessionId: result.sessionId,
 
     usage: result.usage,
+
+    // Solo con organización: qué agente y versión respondieron, y la
+    // conversación que hay que reenviar en el próximo turno.
+    ...(organization && {
+      conversationId: result.conversationId,
+      agentId: result.agentId,
+      configurationId: result.configurationId,
+      configurationVersion: result.configurationVersion,
+    }),
   });
 };

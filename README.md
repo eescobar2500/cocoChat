@@ -162,6 +162,37 @@ PUT    /api/organization/provider-credentials/openai   { apiKey, label? } se val
 DELETE /api/organization/provider-credentials/:id      revocar
 ```
 
+Agentes (Etapa 2). Leer y probar lo puede cualquier miembro; crear, editar,
+publicar y archivar exigen `owner` o `admin`. Las configuraciones son
+inmutables: cada cambio crea una versión nueva, y "volver atrás" es publicar
+una versión anterior.
+
+```
+GET    /api/organization/agents                       ?includeArchived=true
+POST   /api/organization/agents                       { name, instructions, description?, model?, params? } → v1 en borrador
+GET    /api/organization/agents/:id
+PATCH  /api/organization/agents/:id                   { name?, description? }
+DELETE /api/organization/agents/:id                   archivar (deja de responder, no borra)
+
+GET    /api/organization/agents/:id/configurations    versiones, la más nueva primero
+POST   /api/organization/agents/:id/configurations    { instructions?, model?, params?, runtime? } hereda lo omitido → versión N+1
+POST   /api/organization/agents/:id/configurations/:configurationId/publish
+
+POST   /api/organization/agents/:id/chat              { message, conversationId?, configurationId? } probar cualquier versión
+GET    /api/organization/conversations                ?agentId=&limit=
+GET    /api/organization/conversations/:id            con sus mensajes
+```
+
+`params` admite `temperature` (0–2), `top_p` (0–1) y `max_output_tokens`
+(16–128000). Con API key de organización, `POST /api/chat` acepta además
+`agentId` (obligatorio si hay más de un agente publicado), `conversationId`
+para continuar una conversación y `endUserRef` (identificador opaco del
+usuario final, sin datos personales); devuelve `conversationId`,
+`configurationId` y `configurationVersion`.
+
+El panel mínimo del frontend vive en `#/panel` (login, agentes, versiones,
+publicar/volver, chat de prueba).
+
 ### Errores
 
 ```json
