@@ -3,7 +3,8 @@
 > **Actualizado 2026-09** con las decisiones tomadas (Modelo A, BYOK, solo
 > lectura, agentes en CocoChat, Prisma). P12 se resolvió con cifrado por
 > sobre y clave maestra en entorno para el MVP (ver
-> [preguntas abiertas](../open-questions.md)); la Etapa 1 está `PARCIAL`.
+> [preguntas abiertas](../open-questions.md)); la Etapa 1 está `PARCIAL` y la
+> Etapa 2 `IMPLEMENTADA` (falta validar el panel con un cliente real).
 >
 > Ninguna etapa se inicia sin validar antes las
 > [preguntas abiertas](../open-questions.md) que la bloquean.
@@ -74,10 +75,10 @@ por cliente, ni conectores, ni auditoría.
 - `IMPLEMENTADO` `POST /api/chat` con API key de organización usa la clave
   BYOK del tenant (Responses API) y persiste el consumo en `usage_records`;
   sin API key sigue funcionando como en la Etapa 0.
-- `PENDIENTE` Conversaciones y mensajes propios; los IDs de OpenAI quedan
-  como referencias. Hoy la memoria sigue en el cliente (`history`).
-- `PENDIENTE` Panel en el frontend para login, miembros, API keys y clave
-  BYOK; hoy solo existe la API.
+- `IMPLEMENTADO` (en la Etapa 2) Conversaciones y mensajes propios; el id
+  de la respuesta de OpenAI queda como referencia externa.
+- `PENDIENTE` Panel en el frontend para miembros, API keys y clave BYOK;
+  el panel de la Etapa 2 cubre login y agentes, el resto sigue solo en la API.
 
 **Bloqueada por**: nada. **Terminada cuando**: dos organizaciones conviven
 en el mismo despliegue sin poder verse, y existe una prueba automatizada
@@ -87,25 +88,35 @@ base real con el rol de la API (corre en CI) y falta solo lo marcado
 
 ---
 
-## Etapa 2 — Agentes gestionados por el cliente
+## Etapa 2 — Agentes gestionados por el cliente `IMPLEMENTADA`
 
 **Por qué**: es el primer momento en que el cliente configura algo sin
 intervención nuestra.
 
-- `agents` y `agent_configurations` versionadas.
-- Extracción del puerto `AgentRuntime`
-  ([ADR-0005](../architecture/architecture-decisions/ADR-0005-persistencia-y-runtime.md)),
-  con la Responses API como implementación de referencia. **El agente pasa a
-  vivir en CocoChat**: instrucciones, parámetros y herramientas son datos
-  propios, y `OPENAI_AGENT_ID` desaparece del camino principal.
-- La credencial del proveedor se resuelve por organización, no desde el
-  entorno del proceso.
-- CRUD de agentes y panel mínimo de administración.
-- El chat resuelve el agente por organización, no por `.env`.
+- `IMPLEMENTADO` `agents` y `agent_configurations` versionadas e
+  inmutables: cada guardado crea una versión; publicar mueve
+  `active_configuration_id`; volver a una versión anterior es publicarla de
+  nuevo. Archivar no borra nada y saca al agente del chat.
+- `IMPLEMENTADO` Puerto `AgentRuntime` (`backend/src/runtime/`,
+  [ADR-0005](../architecture/architecture-decisions/ADR-0005-persistencia-y-runtime.md))
+  con la Responses API como implementación de referencia. **El agente vive
+  en CocoChat**: instrucciones, modelo y parámetros son datos propios y el
+  runtime solo recibe la configuración, la clave BYOK ya resuelta y el
+  historial. `OPENAI_AGENT_ID` queda solo para el modo sin organización.
+- `IMPLEMENTADO` `conversations` y `messages` propios con RLS; el historial
+  que se envía al proveedor sale de la base, no del cliente.
+- `IMPLEMENTADO` CRUD de agentes y versiones bajo `/api/organization/agents`
+  (leer/probar: cualquier miembro; crear/editar/publicar/archivar:
+  `owner`/`admin`). `POST /api/chat` con API key resuelve el agente
+  publicado de la organización.
+- `IMPLEMENTADO` Panel mínimo (`frontend`, `#/panel`): login, agentes,
+  editor de instrucciones como nueva versión, publicar/volver, chat de
+  prueba contra cualquier versión.
 
-**Bloqueada por**: Etapa 1.
-**Terminada cuando**: un cliente crea un agente, edita sus instrucciones,
-publica una versión, vuelve a la anterior y conversa con él.
+**Bloqueada por**: nada. **Terminada cuando**: un cliente crea un agente,
+edita sus instrucciones, publica una versión, vuelve a la anterior y
+conversa con él — `backend/test/agents.test.js` recorre ese flujo completo
+contra una base real con un runtime falso (sin red).
 
 ---
 

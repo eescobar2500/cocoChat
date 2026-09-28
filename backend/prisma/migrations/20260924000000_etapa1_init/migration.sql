@@ -212,5 +212,12 @@ GRANT USAGE ON SCHEMA "public" TO cocochat_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "public" TO cocochat_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA "public"
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO cocochat_app;
--- La tabla de control de Prisma es solo del rol de migraciones.
-REVOKE ALL ON TABLE "_prisma_migrations" FROM cocochat_app;
+-- La tabla de control de Prisma es solo del rol de migraciones. (En la
+-- base sombra de `migrate diff` todavía no existe.)
+DO $$
+BEGIN
+  IF to_regclass('"_prisma_migrations"') IS NOT NULL THEN
+    REVOKE ALL ON TABLE "_prisma_migrations" FROM cocochat_app;
+  END IF;
+END
+$$;

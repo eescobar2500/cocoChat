@@ -33,6 +33,10 @@ model Organization {
   apiKeys             ApiKey[]
   providerCredentials ProviderCredential[]
   usageRecords        UsageRecord[]
+  agents              Agent[]
+  agentConfigurations AgentConfiguration[]
+  conversations       Conversation[]
+  messages            Message[]
 
   @@map("organizations")
 }
@@ -119,4 +123,95 @@ model UsageRecord {
 
   @@index([organizationId, createdAt(sort: Desc)])
   @@map("usage_records")
+}
+
+// El agente vive en CocoChat (ADR-0005): su definición son datos propios,
+// no una referencia a un agente de OpenAI. La configuración vigente es la
+// versión apuntada por `activeConfigurationId`; publicar o volver atrás es
+// mover ese puntero.
+model Agent {
+  id                    String    @id @default(uuid()) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  name                  String
+  description           String?
+  status                String    @default("draft")
+  activeConfigurationId String?   @unique @map("active_configuration_id") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  archivedAt            DateTime? @map("archived_at")
+
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  activeConfiguration AgentConfiguration? @relation("ActiveConfiguration", fields: [activeConfigurationId], references: [id])
+  configurations      AgentConfiguration[] @relation("AgentConfigurations")
+  conversations       Conversation[]
+
+  @@index([organizationId, status])
+  @@map("agents")
+}
+
+// Versión inmutable de la configuración de un agente. Nunca se edita: cada
+// cambio crea la versión siguiente. Así hay historial, rollback y se puede
+// explicar con qué instrucciones respondió un mensaje antiguo.
+model AgentConfiguration {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  agentId        String    @map("agent_id") @db.Uuid
+  version        Int
+  instructions   String
+  model          String
+  params         Json      @default("{}")
+  provider       String    @default("openai")
+  runtime        String    @default("openai_responses")
+  publishedAt    DateTime? @map("published_at")
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent        Agent        @relation("AgentConfigurations", fields: [agentId], references: [id], onDelete: Cascade)
+  activeFor    Agent?       @relation("ActiveConfiguration")
+  messages     Message[]
+
+  @@unique([agentId, version])
+  @@index([organizationId])
+  @@map("agent_configurations")
+}
+
+// La verdad sobre la conversación está aquí; `externalSessionRef` guarda
+// como máximo una referencia al proveedor, nunca la fuente de verdad.
+model Conversation {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  agentId            String    @map("agent_id") @db.Uuid
+  channel            String    @default("api")
+  endUserRef         String?   @map("end_user_ref")
+  externalSessionRef String?   @map("external_session_ref")
+  status             String    @default("open")
+  startedAt          DateTime  @default(now()) @map("started_at")
+  lastMessageAt      DateTime  @default(now()) @map("last_message_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  agent        Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  messages     Message[]
+
+  @@index([organizationId, agentId, lastMessageAt(sort: Desc)])
+  @@map("conversations")
+}
+
+model Message {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  conversationId  String   @map("conversation_id") @db.Uuid
+  role            String
+  content         String
+  toolCalls       Json?    @map("tool_calls")
+  tokenUsage      Json?    @map("token_usage")
+  configurationId String?  @map("configuration_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  conversation  Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  configuration AgentConfiguration? @relation(fields: [configurationId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
 }

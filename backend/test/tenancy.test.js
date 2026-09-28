@@ -130,7 +130,7 @@ if (!databaseUrl) {
   });
 
   test("la API key autentica a su organización y solo a ella", async () => {
-    // Sin clave de OpenAI todavía: el chat responde con un error accionable
+    // Sin agente publicado todavía: el chat responde con un error accionable
     // en vez de llamar al proveedor.
     const res = await api("POST", "/api/chat", {
       headers: { "x-api-key": orgs.a.apiKey },
@@ -138,7 +138,7 @@ if (!databaseUrl) {
     });
 
     assert.equal(res.status, 422);
-    assert.match(res.body.message, /clave de OpenAI/);
+    assert.match(res.body.message, /agente publicado/);
 
     const invalida = await api("POST", "/api/chat", {
       headers: { "x-api-key": "cck_00000000_0000000000000000000000000000000000000000" },
