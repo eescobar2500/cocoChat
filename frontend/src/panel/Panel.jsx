@@ -16,13 +16,16 @@ export default function Panel() {
   const [selectedId, setSelectedId] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(Boolean(api.session.get()));
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadAgents = useCallback(async () => {
-    const { agents: list } = await api.listAgents();
+    const { agents: list } = await api.listAgents({ includeArchived: showArchived });
 
     setAgents(list);
-    setSelectedId((current) => current ?? list[0]?.id ?? null);
-  }, []);
+    setSelectedId((current) =>
+      list.some((agent) => agent.id === current) ? current : (list[0]?.id ?? null)
+    );
+  }, [showArchived]);
 
   const loadSession = useCallback(async () => {
     setLoading(true);
@@ -49,6 +52,13 @@ export default function Panel() {
       loadSession();
     }
   }, [loadSession]);
+
+  const handleArchived = async () => {
+    setShowArchived(true);
+    const { agents: list } = await api.listAgents({ includeArchived: true });
+
+    setAgents(list);
+  };
 
   const handleLogin = async (credentials) => {
     const { token } = await api.login(
@@ -141,6 +151,15 @@ export default function Panel() {
             <p className="panel-muted">Todavía no hay agentes. Creá el primero.</p>
           )}
 
+          <label className="panel-check">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(event) => setShowArchived(event.target.checked)}
+            />
+            <span>Mostrar archivados</span>
+          </label>
+
           <ul className="panel-agent-list">
             {agents.map((agent) => (
               <li key={agent.id}>
@@ -168,6 +187,7 @@ export default function Panel() {
               agent={selected}
               canManage={canManage}
               onChanged={loadAgents}
+              onArchived={handleArchived}
               onError={setError}
             />
           ) : (

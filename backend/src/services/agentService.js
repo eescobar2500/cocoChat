@@ -327,8 +327,14 @@ export async function resolveAgentForChat(tx, agentId) {
       include: { activeConfiguration: true },
     });
 
-    if (!agent || agent.status === "archived") {
+    if (!agent) {
       throw ApiError.notFound("El agente no existe");
+    }
+
+    if (agent.status === "archived") {
+      throw ApiError.unprocessable(
+        "El agente está archivado y ya no responde. Usá otro agente o creá uno nuevo."
+      );
     }
 
     if (agent.status !== "published" || !agent.activeConfiguration) {
