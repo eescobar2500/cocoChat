@@ -321,3 +321,12 @@
     grid-template-columns: 1fr;
   }
 }
+
+.panel-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}

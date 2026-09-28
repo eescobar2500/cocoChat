@@ -11,7 +11,7 @@ const formatDate = (value) =>
 // configuraciones son inmutables), y publicar/volver mueven el puntero
 // `activeConfiguration`. Lo que responde el chat con API key es siempre la
 // versión publicada; acá se puede probar cualquier versión sin publicarla.
-export function AgentEditor({ agent, canManage, onChanged, onError }) {
+export function AgentEditor({ agent, canManage, onChanged, onArchived, onError }) {
   const [versions, setVersions] = useState([]);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -45,12 +45,12 @@ export function AgentEditor({ agent, canManage, onChanged, onError }) {
   const update = (field) => (event) =>
     setForm((current) => ({ ...current, [field]: event.target.value }));
 
-  const run = async (action) => {
+  const run = async (action, refresh = onChanged) => {
     setSaving(true);
 
     try {
       await action();
-      await Promise.all([loadVersions(), onChanged()]);
+      await Promise.all([loadVersions(), refresh()]);
     } catch (err) {
       onError(err.message);
     } finally {
@@ -83,7 +83,7 @@ export function AgentEditor({ agent, canManage, onChanged, onError }) {
       return;
     }
 
-    run(() => api.archiveAgent(agent.id));
+    run(() => api.archiveAgent(agent.id), onArchived);
   };
 
   const handleRename = () => {

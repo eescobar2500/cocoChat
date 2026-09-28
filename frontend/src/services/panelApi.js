@@ -53,7 +53,8 @@ export const login = (email, password, organization) =>
 
 export const getMe = () => request("GET", "/api/organization");
 
-export const listAgents = () => request("GET", "/api/organization/agents");
+export const listAgents = ({ includeArchived = false } = {}) =>
+  request("GET", `/api/organization/agents${includeArchived ? "?includeArchived=true" : ""}`);
 export const getAgent = (id) => request("GET", `/api/organization/agents/${id}`);
 export const createAgent = (input) => request("POST", "/api/organization/agents", { body: input });
 export const updateAgent = (id, input) =>

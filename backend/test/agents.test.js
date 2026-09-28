@@ -349,6 +349,14 @@ if (!databaseUrl) {
 
     assert.equal(chat.status, 422);
 
+    const explicit = await api("POST", "/api/chat", {
+      headers: { "x-api-key": orgs.a.apiKey },
+      body: { message: "hola", agentId: agent.id },
+    });
+
+    assert.equal(explicit.status, 422);
+    assert.match(explicit.body.message, /archivado/);
+
     const conversations = await api("GET", "/api/organization/conversations", {
       token: orgs.a.token,
     });
